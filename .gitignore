@@ -1,0 +1,79 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Environment Variables
+.env
+!.env.example
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# pytest & coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs
+logs/
+*.log
+
+# Large Datasets (keep directories tracked via .gitkeep or README.md)
+data/raw/*.csv
+data/raw/*.parquet
+data/raw/*.zip
+data/raw/*.gz
+!data/raw/README.md
+!data/raw/.gitkeep
+
+data/processed/*.csv
+data/processed/*.parquet
+!data/processed/.gitkeep
+
+data/external/*
+!data/external/.gitkeep
+
+# Models and checkpoints
+models/*.joblib
+models/*.pkl
+models/*.json
+models/*.ubj
+!models/.gitkeep
+
+# OS specific
+.DS_Store
+Thumbs.db
