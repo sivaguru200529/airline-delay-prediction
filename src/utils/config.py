@@ -112,6 +112,64 @@ class AppConfig:
         ]
     )
 
+    # Derived or pattern-based leakage column identifiers to audit against
+    forbidden_leakage_keywords: List[str] = field(
+        default_factory=lambda: [
+            "arr_delay",
+            "dep_delay",
+            "actual_dep",
+            "actual_arr",
+            "actual_departure",
+            "actual_arrival",
+            "taxi_out",
+            "taxi_in",
+            "wheels_off",
+            "wheels_on",
+            "air_time",
+            "elapsed_time",
+            "cancellation_code",
+        ]
+    )
+
+    # Time of Day Categories: [start_hour, end_hour)
+    # overnight: [22, 6), morning: [6, 12), afternoon: [12, 18), evening: [18, 22)
+    time_of_day_definitions: Dict[str, str] = field(
+        default_factory=lambda: {
+            "overnight": "22:00 to 05:59",
+            "morning": "06:00 to 11:59",
+            "afternoon": "12:00 to 17:59",
+            "evening": "18:00 to 21:59",
+        }
+    )
+
+    # Historical Delay Rate calculation parameters
+    historical_min_history: int = field(
+        default_factory=lambda: int(os.getenv("HISTORICAL_MIN_HISTORY", "3"))
+    )
+    historical_fallback_strategy: str = field(
+        default_factory=lambda: os.getenv("HISTORICAL_FALLBACK_STRATEGY", "global_prior")
+    )
+
+    # Weather foundation parameters
+    weather_lookback_minutes: int = field(
+        default_factory=lambda: int(os.getenv("WEATHER_LOOKBACK_MINUTES", "120"))
+    )
+    weather_required_fields: List[str] = field(
+        default_factory=lambda: [
+            "airport",
+            "timestamp",
+            "temperature",
+            "humidity",
+            "wind_speed",
+            "wind_direction",
+            "precipitation",
+            "visibility",
+            "pressure",
+            "cloud_cover",
+            "weather_condition",
+        ]
+    )
+
     # Database settings (Phase 3)
     db_host: str = field(default_factory=lambda: os.getenv("DB_HOST", "localhost"))
     db_port: int = field(default_factory=lambda: int(os.getenv("DB_PORT", "5432")))

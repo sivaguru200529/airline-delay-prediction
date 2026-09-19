@@ -198,7 +198,11 @@ copy .env.example .env   # Windows
 
 ### Run Complete End-to-End Pipeline
 ```bash
+# Run full Phase 1 + Phase 2A end-to-end pipeline
 python main.py --all
+
+# Run only Phase 2A (Feature engineering, historical features, quality reports)
+python main.py --phase2a
 ```
 *(If no file is yet placed in `data/raw/`, the CLI runs against the verified development sample in `data/sample/`).*
 
@@ -209,19 +213,83 @@ python main.py --data-path data/raw/flights_2024.csv --all
 
 ### Run Specific Modular Steps
 ```bash
-# Ingestion & Schema Inspection only
+# Ingestion & Schema Inspection only (Phase 1)
 python main.py --ingest
 
-# Data Quality Validation only
+# Data Quality Validation only (Phase 1)
 python main.py --validate
 
-# Preprocessing & Anti-Leakage purge only
+# Preprocessing & Anti-Leakage purge only (Phase 1)
 python main.py --preprocess
+
+# Feature Engineering & Quality Reporting only (Phase 2A)
+python main.py --phase2a
 ```
 
 ---
 
-## 10. Running Automated Tests
+## 10. Phase 2A — Feature Engineering, Historical Features & EDA
+
+Phase 2A delivers a validated, ML-ready feature dataset (`flights_features.parquet`) ready for Phase 2B modeling without target leakage.
+
+### 1. Pre-Departure Feature Engineering (`src/features/feature_engineering.py`)
+- **Calendar Attributes**: `year`, `month`, `day`, `day_of_week` (0=Mon..6=Sun), `week_of_year`, `day_of_year`, `is_weekend`.
+- **Scheduled Departure Timing**: `departure_hour`, `departure_minute`, `departure_minutes_since_midnight`, and operational blocks `time_of_day` (`overnight` [22-6), `morning` [6-12), `afternoon` [12-18), `evening` [18-22)).
+- **Scheduled Arrival Timing**: `arrival_hour`, `arrival_minute`, `arrival_minutes_since_midnight` (when present in schedule).
+- **Periodic Cyclical Transformations**: Mathematically exact and semantically continuous unit-circle projections for `departure_hour_sin/cos` (period 24), `day_of_week_sin/cos` (period 7), and `month_sin/cos` (period 12), ensuring 23:59 is adjacent to 00:01 and December is adjacent to January.
+- **Route & Flight Attributes**: `route` (`ORIGIN_DEST`), `distance`, and FAA haul categories `haul_category` (`short_haul` <500 mi, `medium_haul` 500-1500 mi, `long_haul` >1500 mi).
+- **Conditional Omission**: `same_airport_flag` was audited; because 100% of commercial flights had $\text{origin} \ne \text{destination}$ (zero variance), it was omitted to eliminate dead noise.
+
+### 2. Time-Aware Historical Delay Features (`src/features/historical_features.py`)
+- **Strict Anti-Leakage Invariant**:
+  $$\text{observation\_timestamp} < \text{prediction\_time} = \text{scheduled\_departure}$$
+- **Features Generated**:
+  - `historical_origin_delay_rate` & `historical_origin_flight_count`
+  - `historical_destination_delay_rate` & `historical_destination_flight_count`
+  - `historical_airline_delay_rate` & `historical_airline_flight_count`
+  - `historical_route_delay_rate` & `historical_route_flight_count`
+- **Zero-Leakage Guarantees**:
+  - Current flight target is strictly excluded.
+  - Concurrent flights departing at the exact same timestamp are excluded from each other.
+  - Future flights are barred.
+  - Supporting volume counts are retained alongside rates to allow downstream models to weight low-sample evidence.
+  - Configurable minimum-history rule (`min_history = 3`) with fallback to strictly prior global rate.
+- **Development Sample Limitation**:
+  The 500-flight development sample contains limited historical depth across 10 days. Sample-derived rates are designed for integration verification, not population-level operational conclusions.
+
+### 3. Weather Integration Foundation (`src/features/weather_features.py`)
+- **Observed vs. Forecast Distinction**: The architecture explicitly models weather *observed* at or before scheduled departure ($t_{obs} \le T_{dep}$), preserving local-to-UTC alignment. It does *not* claim observed weather is equivalent to an advance forecast.
+- **Zero Fabrication**: Because external weather datasets are not yet placed in `data/external/`, the pipeline outputs:
+  ```text
+  WEATHER STATUS: FOUNDATION READY — REAL DATA NOT PROVIDED
+  ```
+  leaving the production ML matrix unpolluted by synthetic records while the interface, schema validator, and nearest-prior temporal join logic are fully verified.
+
+### 4. Automated Leakage Audit (`assert_no_target_leakage`)
+- Centralized in `src/utils/config.py`.
+- Rejects any post-flight outcome columns (`arrival_delay`, `departure_delay`, `actual_dep_time`, `actual_arr_time`, `taxi_out`, `taxi_in`, `wheels_off`, `wheels_on`, `air_time`, `elapsed_time`) or derived keyword patterns.
+- Guarantees `LEAKAGE AUDIT: PASS`.
+
+### 5. Chronological Out-of-Time Dataset Splitting
+- Sorts strictly by scheduled departure timestamp:
+  - **Train**: 70% earliest records (2024-01-01 to 2024-01-07)
+  - **Validation**: 15% intermediate records (2024-01-07 to 2024-01-09)
+  - **Test**: 15% future out-of-time records (2024-01-09 to 2024-01-10)
+- Prevents future-to-past lookahead bias.
+
+### 6. Generated Phase 2A Artifacts
+- **ML Datasets**:
+  - `data/processed/flights_features.parquet` (481 records, 38 features)
+  - `data/processed/flights_features.csv`
+- **Documentation & Reports**:
+  - `reports/feature_dictionary.md` (complete specification of all 38 features)
+  - `reports/feature_quality_report.md` & `.json` (data health, missingness, leakage results)
+  - `reports/figures/*.png` (6 publication-grade figures)
+  - `notebooks/04_eda.ipynb` (interactive exploratory analysis)
+
+---
+
+## 11. Running Automated Tests
 
 Run the full unit test suite with pytest:
 
@@ -229,20 +297,32 @@ Run the full unit test suite with pytest:
 pytest -v tests/
 ```
 
-### Verified Test Cases:
+### Verified Test Cases (21 Total — 100% Pass):
 * **Target Threshold Verification**: Confirms $\text{delay} \ge 15 \to 1$, $\text{delay} < 15 \to 0$.
-* **Data Leakage Check**: Asserts that `arrival_delay`, `departure_delay`, `actual_departure`, `actual_arrival`, `taxi_out`, `taxi_in`, `wheels_off`, `wheels_on`, and `air_time` are purged from the pre-departure feature set.
+* **Data Leakage Check**: Asserts post-flight operational columns are purged from the pre-departure feature set.
 * **Schema Resolution**: Tests automatic mapping of BTS and Kaggle headers.
 * **Data Validation**: Tests detection of duplicates, invalid dates, malformed airport codes, and negative distances.
 * **Temporal Integrity**: Tests that historical feature calculation rejects future records.
+* **Date Feature Generation**: Tests extraction of year, month, day, day_of_week, week_of_year, day_of_year, is_weekend.
+* **Scheduled Timing Parsing**: Tests military time parsing, midnight rollovers, and time-of-day blocks.
+* **Cyclical Math & Semantic Periodicity**: Tests $\sin^2(x) + \cos^2(x) = 1$, hour 0 vs 24 equality, hour 23/0 circular adjacency, December/January wrap-around, and Sunday/Monday continuity.
+* **Route & Haul Categorization**: Tests route string assembly, FAA distance haul grouping, and conditional zero-variance omission.
+* **Historical Strict Anti-Leakage**: Deterministic proof that a flight cannot see itself, concurrent flights are excluded, and only prior flights contribute.
+* **Historical Fallback**: Tests minimum history threshold and global prior fallback behavior.
+* **Weather Schema Validation**: Validates external weather fields, valid IATA codes, and physical value ranges.
+* **Weather Temporal Matching**: Tests backward asof join obeying observation_time $\le$ scheduled departure.
+* **Automated Leakage Audit**: Tests loud rejection when any post-flight field is introduced.
+* **Chronological Dataset Split**: Tests out-of-time separation with zero temporal overlap.
+* **Final Feature Dataset Schema**: Validates all 38 required columns and confirms zero leakage in exported parquet.
 
 ---
 
-## 11. Project Status & Roadmap
+## 12. Project Status & Roadmap
 
 | Phase | Milestone | Status |
 | :--- | :--- | :--- |
 | **Phase 1** | Scaffolding, Ingestion, Validation, Anti-Leakage Preprocessing, CLI, Pytest | **COMPLETED** |
-| **Phase 2** | Feature Engineering, Time-Aware Split, Weather Join, Baseline & XGBoost, SHAP | *Next Phase* |
+| **Phase 2A** | Feature Engineering, Temporal Historical Features, Weather Foundation, Leakage Audit, EDA | **COMPLETED** |
+| **Phase 2B** | Chronological Split Training, Baseline & XGBoost, Cost-Sensitive Thresholds, SHAP | *Next Phase* |
 | **Phase 3** | PostgreSQL Data Layer, FastAPI Microservice, Streamlit Operations Dashboard | *Upcoming* |
 | **Phase 4** | Dockerization, CI/CD Pipeline, Model Registry, Production Packaging | *Upcoming* |
