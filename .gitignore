@@ -77,3 +77,6 @@ models/*.ubj
 # OS specific
 .DS_Store
 Thumbs.db
+# Antigravity implementation plans and walkthroughs
+implementation_plan*.md
+walkthrough*.md

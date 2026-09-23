@@ -45,6 +45,7 @@ from src.features.feature_reporter import (
     build_feature_dictionary_markdown,
     generate_feature_quality_report,
 )
+from src.models.train import run_training_pipeline
 
 logger = get_logger("airline_delay_cli")
 
@@ -326,16 +327,50 @@ def run_phase2a(config, pre_departure_df: Optional[pd.DataFrame] = None) -> int:
     return 0
 
 
+def run_phase2b(config, features_df: Optional[pd.DataFrame] = None) -> int:
+    """Execute complete Phase 2B machine learning training, evaluation, and explainability pipeline.
+
+    Workflow:
+        ML dataset validation & leakage audit
+                ↓
+        Route suitability & cardinality evaluation
+                ↓
+        Chronological split (train/validation/test)
+                ↓
+        Leakage-free preprocessing (ColumnTransformer fitted strictly on train)
+                ↓
+        Model training (Baseline, Logistic Regression, Random Forest, XGBoost)
+                ↓
+        Validation comparison & threshold analysis
+                ↓
+        Final test evaluation (once on out-of-time test set)
+                ↓
+        Probability calibration & feature importance / SHAP
+                ↓
+        Model serialization (delay_model.joblib + metadata)
+                ↓
+        Evaluation reports (MD & JSON) + figures
+    """
+    try:
+        run_training_pipeline(features_df=features_df, config=config)
+        return 0
+    except Exception as e:
+        logger.error("Phase 2B execution failed: %s", e, exc_info=True)
+        print(f"\nERROR: Phase 2B failed with: {e}")
+        return 1
+
+
 def run_pipeline(
     data_path: Optional[str] = None,
     do_ingest: bool = False,
     do_validate: bool = False,
     do_preprocess: bool = False,
     do_phase2a: bool = False,
+    do_phase2b: bool = False,
     do_all: bool = False,
     nrows: Optional[int] = None,
 ) -> int:
-    """Execute selected steps or complete Phase 1 and Phase 2A pipeline."""
+    """Execute selected steps or complete Phase 1, Phase 2A, and Phase 2B pipeline."""
     config = get_config()
 
     # Determine input dataset
@@ -362,7 +397,7 @@ def run_pipeline(
     else:
         logger.info("Using raw flight dataset: %s", target_file)
 
-    # When --all is specified, run Phase 1 and Phase 2A end-to-end
+    # When --all is specified, run Phase 1 -> Phase 2A -> Phase 2B end-to-end
     if do_all:
         pre_departure_df = run_phase1(
             target_file=target_file,
@@ -372,7 +407,15 @@ def run_pipeline(
             do_preprocess=True,
             nrows=nrows,
         )
-        return run_phase2a(config=config, pre_departure_df=pre_departure_df)
+        res_2a = run_phase2a(config=config, pre_departure_df=pre_departure_df)
+        if res_2a != 0:
+            logger.error("Phase 2A failed; aborting Phase 2B execution.")
+            return res_2a
+        return run_phase2b(config=config)
+
+    # When --phase2b is specified alone
+    if do_phase2b:
+        return run_phase2b(config=config)
 
     # When --phase2a is specified alone
     if do_phase2a:
@@ -390,7 +433,7 @@ def run_pipeline(
         )
         return 0
 
-    # Default fallback if no flags provided: run full pipeline
+    # Default fallback if no flags provided: run full pipeline end-to-end
     pre_departure_df = run_phase1(
         target_file=target_file,
         config=config,
@@ -399,7 +442,10 @@ def run_pipeline(
         do_preprocess=True,
         nrows=nrows,
     )
-    return run_phase2a(config=config, pre_departure_df=pre_departure_df)
+    res_2a = run_phase2a(config=config, pre_departure_df=pre_departure_df)
+    if res_2a != 0:
+        return res_2a
+    return run_phase2b(config=config)
 
 
 def main():
@@ -434,9 +480,14 @@ def main():
         help="Execute Phase 2A feature engineering, historical features, and quality reports.",
     )
     parser.add_argument(
+        "--phase2b",
+        action="store_true",
+        help="Execute Phase 2B model training, evaluation, threshold analysis, SHAP, and serialization.",
+    )
+    parser.add_argument(
         "--all",
         action="store_true",
-        help="Execute complete end-to-end pipeline (Phase 1 + Phase 2A).",
+        help="Execute complete end-to-end pipeline (Phase 1 + Phase 2A + Phase 2B).",
     )
     parser.add_argument(
         "--nrows",
@@ -452,6 +503,7 @@ def main():
         do_validate=args.validate,
         do_preprocess=args.preprocess,
         do_phase2a=args.phase2a,
+        do_phase2b=args.phase2b,
         do_all=args.all,
         nrows=args.nrows,
     )

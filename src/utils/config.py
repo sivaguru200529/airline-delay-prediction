@@ -78,6 +78,25 @@ class AppConfig:
     # Risk tiers
     risk_thresholds: RiskCategoryThresholds = field(default_factory=RiskCategoryThresholds)
 
+    # Machine Learning & Modeling (Phase 2B)
+    random_seed: int = field(default_factory=lambda: int(os.getenv("RANDOM_SEED", "42")))
+    train_ratio: float = field(default_factory=lambda: float(os.getenv("TRAIN_RATIO", "0.70")))
+    val_ratio: float = field(default_factory=lambda: float(os.getenv("VAL_RATIO", "0.15")))
+    test_ratio: float = field(default_factory=lambda: float(os.getenv("TEST_RATIO", "0.15")))
+    candidate_thresholds: List[float] = field(
+        default_factory=lambda: [0.30, 0.40, 0.50, 0.60, 0.70]
+    )
+    default_classification_threshold: float = 0.50
+    include_route_feature: bool = False
+
+    # Model Hyperparameters (Phase 2B)
+    lr_c: float = field(default_factory=lambda: float(os.getenv("LR_C", "1.0")))
+    rf_n_estimators: int = field(default_factory=lambda: int(os.getenv("RF_N_ESTIMATORS", "100")))
+    rf_max_depth: Optional[int] = field(default_factory=lambda: int(os.getenv("RF_MAX_DEPTH", "6")))
+    xgb_n_estimators: int = field(default_factory=lambda: int(os.getenv("XGB_N_ESTIMATORS", "100")))
+    xgb_max_depth: int = field(default_factory=lambda: int(os.getenv("XGB_MAX_DEPTH", "4")))
+    xgb_learning_rate: float = field(default_factory=lambda: float(os.getenv("XGB_LEARNING_RATE", "0.05")))
+
     # Essential conceptual fields required in any raw dataset
     required_conceptual_fields: List[str] = field(
         default_factory=lambda: [

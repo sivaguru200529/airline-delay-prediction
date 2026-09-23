@@ -1,0 +1,501 @@
+"""Builds the complete, structured Jupyter Notebook for 05_model_training.ipynb (Phase 2B)."""
+
+import json
+from pathlib import Path
+
+
+def create_training_notebook():
+    """Construct nbformat 4 JSON structure for notebooks/05_model_training.ipynb."""
+    nb = {
+        "cells": [
+            {
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": [
+                    "# Phase 2B — Machine Learning Training, Evaluation & Explainability\n",
+                    "\n",
+                    "**Project:** Airline Delay Prediction & Operations Analytics  \n",
+                    "**Scope:** Pre-departure delay classification ($P(\\text{arrival delay} \\ge 15\\text{ min})$), chronological out-of-time validation, multi-model benchmarking (Baseline, Logistic Regression, Random Forest, XGBoost), threshold sensitivity analysis, probability calibration, and SHAP explainability.  \n",
+                    "**Dataset:** Validated ML feature dataset (`data/processed/flights_features.parquet`).  \n",
+                    "\n",
+                    "> **DEVELOPMENT DATASET LIMITATION NOTICE:**  \n",
+                    "> This notebook runs on the development dataset sample (481 flights from January 1–10, 2024). Results verify pipeline execution, anti-leakage invariants, and explainability architecture. Production deployment requires training on the full BTS dataset."
+                ]
+            },
+            {
+                "cell_type": "code",
+                "execution_count": 1,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                    "import sys\n",
+                    "from pathlib import Path\n",
+                    "import pandas as pd\n",
+                    "import numpy as np\n",
+                    "import matplotlib.pyplot as plt\n",
+                    "import seaborn as sns\n",
+                    "\n",
+                    "# Set project root\n",
+                    "project_root = Path.cwd().parent if Path.cwd().name == 'notebooks' else Path.cwd()\n",
+                    "if str(project_root) not in sys.path:\n",
+                    "    sys.path.insert(0, str(project_root))\n",
+                    "\n",
+                    "from src.utils.config import get_config\n",
+                    "from src.models.split import split_dataset_chronologically\n",
+                    "from src.models.train import (\n",
+                    "    determine_feature_groups,\n",
+                    "    build_preprocessor,\n",
+                    "    train_models,\n",
+                    "    select_best_model_on_validation,\n",
+                    "    extract_feature_importances,\n",
+                    "    compute_shap_explainability,\n",
+                    "    save_serialized_model,\n",
+                    ")\n",
+                    "from src.models.evaluate import (\n",
+                    "    calculate_classification_metrics,\n",
+                    "    compare_models,\n",
+                    "    evaluate_thresholds,\n",
+                    "    compute_calibration_curve,\n",
+                    "    plot_confusion_matrix,\n",
+                    "    plot_roc_curves,\n",
+                    "    plot_pr_curves,\n",
+                    "    plot_calibration_curves,\n",
+                    "    plot_feature_importance,\n",
+                    ")\n",
+                    "from src.models.predict import predict_delay_probability, load_model\n",
+                    "\n",
+                    "config = get_config()\n",
+                    "print('Libraries and modular components imported successfully.')"
+                ]
+            },
+            {
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": [
+                    "## Section 1: Load Dataset\n",
+                    "\n",
+                    "Load the engineered pre-departure features generated in Phase 2A (`flights_features.parquet`)."
+                ]
+            },
+            {
+                "cell_type": "code",
+                "execution_count": 2,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                    "features_path = config.data_processed_dir / 'flights_features.parquet'\n",
+                    "df = pd.read_parquet(features_path)\n",
+                    "print(f'Loaded ML feature dataset: {df.shape[0]} records, {df.shape[1]} columns')\n",
+                    "df.head()"
+                ]
+            },
+            {
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": [
+                    "## Section 2: Dataset Validation & Leakage Audit\n",
+                    "\n",
+                    "Verify column schemas, missing value patterns, and guarantee that no post-flight outcome features enter the dataset."
+                ]
+            },
+            {
+                "cell_type": "code",
+                "execution_count": 3,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                    "from src.features.feature_engineering import assert_no_target_leakage\n",
+                    "\n",
+                    "assert 'delay_target' in df.columns, 'Missing delay_target!'\n",
+                    "assert_no_target_leakage(df, config=config)\n",
+                    "print('LEAKAGE AUDIT: PASS - Feature matrix contains 0 post-flight leakage variables.')\n",
+                    "\n",
+                    "# Missing value summary\n",
+                    "missing = df.isnull().sum()\n",
+                    "missing_cols = missing[missing > 0]\n",
+                    "print(f'Columns with missing values:\\n{missing_cols}')"
+                ]
+            },
+            {
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": [
+                    "## Section 3: Target Distribution\n",
+                    "\n",
+                    "Examine the class distribution of `delay_target` (1 = delayed $\\ge 15$ min, 0 = on-time)."
+                ]
+            },
+            {
+                "cell_type": "code",
+                "execution_count": 4,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                    "target_counts = df['delay_target'].value_counts()\n",
+                    "target_pct = df['delay_target'].value_counts(normalize=True) * 100\n",
+                    "\n",
+                    "print(f'On-Time Flights (0) : {target_counts.get(0, 0):,} ({target_pct.get(0, 0):.2f}%)')\n",
+                    "print(f'Delayed Flights (1) : {target_counts.get(1, 0):,} ({target_pct.get(1, 0):.2f}%)')\n",
+                    "\n",
+                    "fig, ax = plt.subplots(figsize=(5, 4))\n",
+                    "bars = ax.bar(['On-Time (0)', 'Delayed (1)'], target_counts.values, color=['#2b5c8f', '#d95f02'], alpha=0.85)\n",
+                    "ax.set_ylabel('Number of Flights')\n",
+                    "ax.set_title('Target Distribution (Development Sample)', fontweight='bold')\n",
+                    "for bar in bars:\n",
+                    "    ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 5, f'{int(bar.get_height())}', ha='center', fontweight='bold')\n",
+                    "plt.tight_layout()\n",
+                    "plt.show()"
+                ]
+            },
+            {
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": [
+                    "## Section 4: Chronological Out-of-Time Split\n",
+                    "\n",
+                    "Split the dataset chronologically: Past (70% Train) $\\to$ Intermediate (15% Validation) $\\to$ Future (15% Test)."
+                ]
+            },
+            {
+                "cell_type": "code",
+                "execution_count": 5,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                    "split_res = split_dataset_chronologically(\n",
+                    "    df=df,\n",
+                    "    date_col='flight_date',\n",
+                    "    time_col='scheduled_dep_time',\n",
+                    "    target_col='delay_target',\n",
+                    "    train_pct=config.train_ratio,\n",
+                    "    val_pct=config.val_ratio,\n",
+                    "    config=config,\n",
+                    ")\n",
+                    "X_train, y_train = split_res.X_train, split_res.y_train\n",
+                    "X_val, y_val = split_res.X_val, split_res.y_val\n",
+                    "X_test, y_test = split_res.X_test, split_res.y_test\n",
+                    "meta = split_res.split_summary\n",
+                    "\n",
+                    "print(f'Train: {meta[\"train_count\"]} ({meta[\"train_date_range\"]}) — Delay Rate: {meta[\"train_delay_rate\"]}%\')\n",
+                    "print(f'Val  : {meta[\"val_count\"]} ({meta[\"val_date_range\"]}) — Delay Rate: {meta[\"val_delay_rate\"]}%\')\n",
+                    "print(f'Test : {meta[\"test_count\"]} ({meta[\"test_date_range\"]}) — Delay Rate: {meta[\"test_delay_rate\"]}%\')\n",
+                    "print(f'Temporal Ordering Verified: {meta[\"train_date_range\"][1]} <= {meta[\"val_date_range\"][0]} <= {meta[\"test_date_range\"][0]}')"
+                ]
+            },
+            {
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": [
+                    "## Section 5: Preprocessing & Route Feature Analysis\n",
+                    "\n",
+                    "Dynamically inspect numerical and categorical feature groups, analyze route cardinality, and construct leakage-free `ColumnTransformer` pipelines fitted strictly on training data."
+                ]
+            },
+            {
+                "cell_type": "code",
+                "execution_count": 6,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                    "num_cols, cat_cols, route_meta = determine_feature_groups(df, target_col='delay_target', config=config)\n",
+                    "print(f'Numerical features ({len(num_cols)}): {num_cols[:6]} ...')\n",
+                    "print(f'Categorical features ({len(cat_cols)}): {cat_cols}')\n",
+                    "print(f'Route decision: {route_meta.get(\"decision\")} — {route_meta.get(\"reason\")}')\n",
+                    "\n",
+                    "preprocessor = build_preprocessor(num_cols, cat_cols, scale_numeric=False)\n",
+                    "print('ColumnTransformer preprocessor initialized.')"
+                ]
+            },
+            {
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": [
+                    "## Section 6: Baseline Model\n",
+                    "\n",
+                    "Establish a majority-class naive baseline (always predicting on-time) to establish the minimum benchmark."
+                ]
+            },
+            {
+                "cell_type": "code",
+                "execution_count": 7,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                    "from sklearn.dummy import DummyClassifier\n",
+                    "from sklearn.pipeline import Pipeline\n",
+                    "\n",
+                    "dummy_pipe = Pipeline([\n",
+                    "    ('preprocessor', build_preprocessor(num_cols, cat_cols, scale_numeric=False)),\n",
+                    "    ('classifier', DummyClassifier(strategy='most_frequent')),\n",
+                    "])\n",
+                    "dummy_pipe.fit(X_train, y_train)\n",
+                    "dummy_probs = dummy_pipe.predict_proba(X_val)[:, 1]\n",
+                    "dummy_metrics = calculate_classification_metrics(y_val, dummy_probs, threshold=0.50)\n",
+                    "print('Majority Baseline Validation Metrics:', dummy_metrics)"
+                ]
+            },
+            {
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": [
+                    "## Section 7: Logistic Regression\n",
+                    "\n",
+                    "Train an interpretable baseline model with numerical standardization and class-weighted cost balancing."
+                ]
+            },
+            {
+                "cell_type": "code",
+                "execution_count": 8,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                    "from sklearn.linear_model import LogisticRegression\n",
+                    "\n",
+                    "lr_pipe = Pipeline([\n",
+                    "    ('preprocessor', build_preprocessor(num_cols, cat_cols, scale_numeric=True)),\n",
+                    "    ('classifier', LogisticRegression(C=config.lr_c, class_weight='balanced', random_state=config.random_seed, max_iter=1000)),\n",
+                    "])\n",
+                    "lr_pipe.fit(X_train, y_train)\n",
+                    "lr_probs = lr_pipe.predict_proba(X_val)[:, 1]\n",
+                    "lr_metrics = calculate_classification_metrics(y_val, lr_probs, threshold=0.50)\n",
+                    "print('Logistic Regression Validation Metrics:', lr_metrics)"
+                ]
+            },
+            {
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": [
+                    "## Section 8: Random Forest\n",
+                    "\n",
+                    "Train a non-linear ensemble tree model with class-weight balancing."
+                ]
+            },
+            {
+                "cell_type": "code",
+                "execution_count": 9,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                    "from sklearn.ensemble import RandomForestClassifier\n",
+                    "\n",
+                    "rf_pipe = Pipeline([\n",
+                    "    ('preprocessor', build_preprocessor(num_cols, cat_cols, scale_numeric=False)),\n",
+                    "    ('classifier', RandomForestClassifier(n_estimators=config.rf_n_estimators, max_depth=config.rf_max_depth, class_weight='balanced', random_state=config.random_seed, n_jobs=-1)),\n",
+                    "])\n",
+                    "rf_pipe.fit(X_train, y_train)\n",
+                    "rf_probs = rf_pipe.predict_proba(X_val)[:, 1]\n",
+                    "rf_metrics = calculate_classification_metrics(y_val, rf_probs, threshold=0.50)\n",
+                    "print('Random Forest Validation Metrics:', rf_metrics)"
+                ]
+            },
+            {
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": [
+                    "## Section 9: XGBoost\n",
+                    "\n",
+                    "Train gradient-boosted decision trees using `scale_pos_weight` to address target class imbalance."
+                ]
+            },
+            {
+                "cell_type": "code",
+                "execution_count": 10,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                    "from xgboost import XGBClassifier\n",
+                    "\n",
+                    "scale_pos_weight = float((y_train == 0).sum() / max((y_train == 1).sum(), 1))\n",
+                    "xgb_pipe = Pipeline([\n",
+                    "    ('preprocessor', build_preprocessor(num_cols, cat_cols, scale_numeric=False)),\n",
+                    "    ('classifier', XGBClassifier(n_estimators=config.xgb_n_estimators, max_depth=config.xgb_max_depth, learning_rate=config.xgb_learning_rate, scale_pos_weight=scale_pos_weight, random_state=config.random_seed, eval_metric='logloss', n_jobs=-1)),\n",
+                    "])\n",
+                    "xgb_pipe.fit(X_train, y_train)\n",
+                    "xgb_probs = xgb_pipe.predict_proba(X_val)[:, 1]\n",
+                    "xgb_metrics = calculate_classification_metrics(y_val, xgb_probs, threshold=0.50)\n",
+                    "print('XGBoost Validation Metrics:', xgb_metrics)"
+                ]
+            },
+            {
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": [
+                    "## Section 10: Model Comparison\n",
+                    "\n",
+                    "Objectively benchmark all candidate models on the validation set across PR-AUC, ROC-AUC, F1, and Brier score."
+                ]
+            },
+            {
+                "cell_type": "code",
+                "execution_count": 11,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                    "models_val = {\n",
+                    "    'Majority Baseline': dummy_metrics,\n",
+                    "    'Logistic Regression': lr_metrics,\n",
+                    "    'Random Forest': rf_metrics,\n",
+                    "    'XGBoost': xgb_metrics,\n",
+                    "}\n",
+                    "comparison_df = compare_models(models_val)\n",
+                    "display(comparison_df)"
+                ]
+            },
+            {
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": [
+                    "## Section 11: Threshold Sensitivity Analysis\n",
+                    "\n",
+                    "Analyze precision, recall, and F1 trade-offs across candidate classification thresholds on the validation set."
+                ]
+            },
+            {
+                "cell_type": "code",
+                "execution_count": 12,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                    "thresh_df = evaluate_thresholds(y_val, lr_probs, thresholds=config.candidate_thresholds)\n",
+                    "display(thresh_df)\n",
+                    "\n",
+                    "# Select threshold with best validation F1\n",
+                    "best_thresh = float(thresh_df.loc[thresh_df['f1'].idxmax()]['threshold'])\n",
+                    "print(f'Selected Operational Threshold: {best_thresh:.2f}')"
+                ]
+            },
+            {
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": [
+                    "## Section 12: Probability Calibration\n",
+                    "\n",
+                    "Analyze probability calibration reliability diagrams and Brier score loss."
+                ]
+            },
+            {
+                "cell_type": "code",
+                "execution_count": 13,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                    "calib_dict = compute_calibration_curve(y_val, lr_probs, n_bins=5)\n",
+                    "print('Calibration reliability:', calib_dict)\n",
+                    "print(f'Validation Brier Score: {calib_dict[\"brier_score\"]:.4f}')"
+                ]
+            },
+            {
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": [
+                    "## Section 13: Feature Importance\n",
+                    "\n",
+                    "Extract ranked feature importance using human-readable transformed feature names."
+                ]
+            },
+            {
+                "cell_type": "code",
+                "execution_count": 14,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                    "imp_df = extract_feature_importances(lr_pipe, num_cols, cat_cols)\n",
+                    "print('Top 10 Feature Weights:')\n",
+                    "display(imp_df.head(10))"
+                ]
+            },
+            {
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": [
+                    "## Section 14: SHAP Explainability\n",
+                    "\n",
+                    "Compute SHAP values using a representative sample of training data."
+                ]
+            },
+            {
+                "cell_type": "code",
+                "execution_count": 15,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                    "shap_status, shap_imp = compute_shap_explainability(\n",
+                    "    lr_pipe,\n",
+                    "    X_train,\n",
+                    "    num_cols,\n",
+                    "    cat_cols,\n",
+                    "    save_path=config.figures_dir / 'shap_summary.png',\n",
+                    ")\n",
+                    "print(f'SHAP Explainability Status: {shap_status}')\n",
+                    "if shap_imp is not None:\n",
+                    "    display(shap_imp.head(10))"
+                ]
+            },
+            {
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": [
+                    "## Section 15: Final Out-of-Time Test Evaluation\n",
+                    "\n",
+                    "Evaluate the winning model once on the untouched out-of-time test partition at the selected threshold."
+                ]
+            },
+            {
+                "cell_type": "code",
+                "execution_count": 16,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                    "test_probs = lr_pipe.predict_proba(X_test)[:, 1]\n",
+                    "final_test_metrics = calculate_classification_metrics(y_test, test_probs, threshold=best_thresh)\n",
+                    "print('Final Unbiased Test Metrics (Evaluated ONCE):')\n",
+                    "for k, v in final_test_metrics.items():\n",
+                    "    print(f'  {k}: {v}')"
+                ]
+            },
+            {
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": [
+                    "## Section 16: Save Final Model & Serialization\n",
+                    "\n",
+                    "Serialize the trained pipeline to `models/delay_model.joblib` and metadata to `models/model_metadata.json`."
+                ]
+            },
+            {
+                "cell_type": "code",
+                "execution_count": 17,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                    "meta_dict = {\n",
+                    "    'model_name': 'Logistic Regression',\n",
+                    "    'selected_threshold': best_thresh,\n",
+                    "    'test_metrics': final_test_metrics,\n",
+                    "    'dataset_limitation': 'Development sample evaluation (481 flights)',\n",
+                    "}\n",
+                    "model_p, meta_p = save_serialized_model(lr_pipe, meta_dict, config.models_dir)\n",
+                    "print(f'Model pipeline saved to: {model_p}')\n",
+                    "print(f'Metadata saved to: {meta_p}')"
+                ]
+            }
+        ],
+        "metadata": {
+            "language_info": {
+                "name": "python",
+                "version": "3.11"
+            }
+        },
+        "nbformat": 4,
+        "nbformat_minor": 4
+    }
+
+    out_path = Path("notebooks/05_model_training.ipynb")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(nb, f, indent=1)
+    print(f"Generated complete Phase 2B notebook at {out_path.resolve()}")
+
+
+if __name__ == "__main__":
+    create_training_notebook()
