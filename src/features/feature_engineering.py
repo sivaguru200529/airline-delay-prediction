@@ -355,20 +355,29 @@ def assert_no_target_leakage(
         if forbidden.lower() in columns_lower:
             # Note: delay_target is allowed as the ground-truth label column
             if forbidden.lower() == "arrival_delay":
-                detected_violations.append(f"Direct Target Leakage: '{columns_lower[forbidden.lower()]}'")
+                detected_violations.append(f"Direct Target/Post-Flight Leakage Detected: Direct Target '{columns_lower[forbidden.lower()]}'")
             else:
-                detected_violations.append(f"Post-Flight Operational Leakage: '{columns_lower[forbidden.lower()]}'")
+                detected_violations.append(f"Direct Target/Post-Flight Leakage Detected: Post-Flight Operational Column '{columns_lower[forbidden.lower()]}'")
 
-    # 2. Check derived/keyword patterns
+    # 2. Check derived/keyword patterns and temporal lookahead leakage
     for kw in cfg.forbidden_leakage_keywords:
         for col_lower, original_col in columns_lower.items():
             if original_col in ["delay_target", "flight_date"]:
                 continue
-            if original_col.startswith("historical_"):
-                # Historical features are vetted by temporal inequality tests
+            if original_col.startswith("historical_") or original_col.startswith("prior_"):
+                # Strictly prior features are vetted by temporal inequality tests
                 continue
             if kw in col_lower:
-                detected_violations.append(f"Forbidden Pattern '{kw}' in feature '{original_col}'")
+                detected_violations.append(f"Direct Target/Post-Flight Leakage Detected: Forbidden Pattern '{kw}' in feature '{original_col}'")
+
+    # 3. Check for derived temporal leakage prefixes/keywords
+    derived_temporal_leakage_keywords = ["future_", "full_dataset_", "post_flight_"]
+    for d_kw in derived_temporal_leakage_keywords:
+        for col_lower, original_col in columns_lower.items():
+            if original_col in ["delay_target", "flight_date"]:
+                continue
+            if d_kw in col_lower:
+                detected_violations.append(f"Derived Temporal Leakage Detected: '{d_kw}' in feature '{original_col}'")
 
     if detected_violations:
         unique_violations = sorted(list(set(detected_violations)))

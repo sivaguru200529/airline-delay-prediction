@@ -383,7 +383,84 @@ Predictions are output as continuous probabilities $P(\text{Delay} \ge 15\text{ 
 
 ---
 
-## 12. Running Automated Tests
+## 12. Phase 3 — Advanced Feature Engineering & Operational Modeling
+
+Phase 3 implements an expanded, strictly leakage-safe feature engineering layer covering calendar dates, operational time blocks, route distance analysis, airport congestion volume and rates, multi-granular historical delay rates with prior global fallback, and weather interface validation.
+
+> **DEVELOPMENT DATASET LIMITATION NOTICE:**  
+> The metrics presented below are **development-sample results** evaluated on **481 completed flights** (January 1–10, 2024).  
+> These metrics verify pipeline execution, anti-leakage invariants, expanding historical calculations, and feature schemas.  
+> **Statistically representative operational performance requires training on the full multi-month or multi-year BTS dataset.**
+
+### 1. Temporal Anti-Leakage & Availability Contract
+* **Prediction Time Invariant**:
+  $$\text{prediction\_time} = \text{scheduled\_departure} = T_{dep}$$
+* **Strict Anti-Leakage Rule**:
+  $$\text{historical\_observation\_timestamp} < T_{dep}$$
+  The current flight and future flights are **strictly excluded** from historical metrics.
+* **Strictly Prior Global Fallback**:
+  When historical observations fall below `min_history=3`, the global delay fallback rate is calculated **strictly from observations occurring prior to $T_{dep}$** (zero full-dataset lookahead).
+* **Weather Prediction-Time Contract**:
+  - Observed Weather: $T_{obs} \le T_{dep}$
+  - Forecast Weather: $T_{issue} \le T_{dep}$
+  - Zero synthetic data fabrication policy strictly maintained.
+
+### 2. Phase 2A vs Phase 3 Feature Change Architecture
+* **Retained from Phase 2A (Unchanged)**:
+  - Base identifiers: `flight_date`, `airline`, `origin_airport`, `dest_airport`
+  - Calendar attributes: `year`, `month`, `day`, `day_of_week`, `day_of_year`, `is_weekend`, `week_of_year`
+  - Timing attributes: `scheduled_dep_time`, `departure_hour`, `departure_minute`, `departure_minutes_since_midnight`, `scheduled_arr_time`, `arrival_hour`, `arrival_minute`, `arrival_minutes_since_midnight`
+  - Base cyclical projections: `departure_hour_sin`, `departure_hour_cos`, `day_of_week_sin`, `day_of_week_cos`, `month_sin`, `month_cos`
+  - Base flight attributes: `route`, `distance`, `haul_category`
+  - Target: `delay_target`
+* **Enhanced in Phase 3**:
+  - `time_of_day`: Normalized aviation operational blocks (`night`, `morning`, `afternoon`, `evening`) with arrival counterpart `arr_time_of_day`.
+  - Route distance categorization: Data-driven inspection and documented FAA boundaries (`short_haul`, `medium_haul`, `long_haul`).
+  - Historical Delay Features: Standardized historical delay statistics now consistently provide **prior flight counts**, **prior delay counts**, and **prior delay rates** with strictly prior time-aware global fallbacks.
+  - Leakage Audit: Extended to detect derived complete-dataset aggregations, post-prediction weather timestamps, and improper fallback leakages.
+* **New in Phase 3**:
+  - Date: `is_month_start`, `is_month_end`, `quarter`, `season` (`winter`, `spring`, `summer`, `fall`).
+  - Time: `dep_time_bucket` & `arr_time_bucket` (4-hour operational blocks), arrival cyclical encoding `arr_hour_sin` & `arr_hour_cos`.
+  - Route Frequency: `prior_route_frequency` (strictly prior flight volume on the specific route: 0 for 1st flight, 1 for 2nd, etc.).
+  - Airport Operational Features:
+    - `prior_origin_flight_count`, `prior_origin_delay_count`, `prior_origin_delay_rate`
+    - `prior_dest_flight_count`, `prior_dest_delay_count`, `prior_dest_delay_rate`
+  - Time-Interaction History:
+    - `prior_airline_dep_hour_delay_rate` & `prior_airline_dep_hour_count`
+    - `prior_origin_dep_hour_delay_rate` & `prior_origin_dep_hour_count`
+  - Real-Data Weather Layer:
+    - Severe weather indicator flags (`severe_weather_flag`, `rain_flag`, `snow_flag`, `fog_flag`, `storm_flag`, `low_visibility_flag`).
+    - Destination arrival weather alignment evaluated strictly at departure prediction time.
+    - Zero-fabrication status reporting: `WEATHER STATUS: FOUNDATION READY — REAL DATA NOT PROVIDED`.
+
+### 3. Pipeline CLI Execution
+Execute Phase 3 feature engineering independently:
+
+```bash
+# Execute standalone Phase 3 pipeline
+python main.py --phase3
+```
+
+Phase 3 preserves Phase 2A (`--phase2a`) and Phase 2B (`--phase2b`) models intact:
+```bash
+# Verify existing Phase 2A and Phase 2B workflows
+python main.py --phase2a
+python main.py --phase2b
+```
+
+### 4. Phase 3 Generated Artifacts
+* **Feature Datasets**:
+  - `data/processed/flights_features_p3.parquet` (481 records, 68 features)
+  - `data/processed/flights_features_p3.csv`
+* **Quality & Coverage Reports**:
+  - `reports/phase3_feature_report.md` (comprehensive markdown quality report and feature dictionary)
+  - `reports/phase3_feature_report.json` (machine-readable metadata and coverage audit)
+* **Interactive Notebook**:
+  - `notebooks/06_phase3_feature_engineering.ipynb` (12 structured analytical sections)
+
+---
+
+## 13. Running Automated Tests
 
 Run the full unit test suite with pytest:
 
@@ -391,19 +468,33 @@ Run the full unit test suite with pytest:
 pytest -v tests/
 ```
 
-### Verified Test Cases (33 Total — 100% Pass):
+### Verified Test Cases (44 Total — 100% Pass):
 * **Phase 1 Tests (6 tests)**: Target generation, leakage column purging, BTS schema mapping, Kaggle schema mapping, required column validation, data quality checks.
 * **Phase 2A Tests (15 tests)**: Temporal validity acceptance/rejection, calendar feature extraction, military time parsing and midnight rollovers, cyclical unit-circle identities, route and haul categorization, historical delay strictly prior aggregation, minimum history fallback, weather schema validation, weather backward temporal join, automated leakage audit, chronological dataset split, final 38-feature schema validation.
 * **Phase 2B Tests (12 tests)**: Chronological split ordering ($\text{Train} < \text{Val} < \text{Test}$), target/leakage exclusion from feature matrix $X$, route feature suitability evaluation, preprocessing fitted strictly on training data, unknown categorical level handling (`handle_unknown='ignore'`), candidate model training and convergence (Baseline, Logistic Regression, Random Forest, XGBoost), validation model selection, inference schema and operational risk tier mapping, model serialization and reload reproducibility, metric calculation correctness, threshold sensitivity analysis, tree feature importance extraction with meaningful transformed names.
+* **Phase 3 Tests (11 tests)**:
+  1. Date features extraction (`is_month_start`, `is_month_end`, `quarter`, `season`).
+  2. Time features, time-of-day blocks (`night`, `morning`, `afternoon`, `evening`), and 4-hour buckets.
+  3. Cyclical encoding semantic continuity ($\sin^2 + \cos^2 = 1$, circular wrap-around).
+  4. Route distance distribution analysis and categorization (`short_haul`, `medium_haul`, `long_haul`).
+  5. Strictly prior route frequency test (Flight 1 has count 0, Flight 2 has count 1, etc.).
+  6. Airport historical features (prior origin/dest counts and rates, current row excluded, future rows excluded).
+  7. Historical delay features strictly prior temporal protection ($t < T$) and count preservation.
+  8. Minimum-history fallback using strictly prior global rate (no future contamination).
+  9. Weather prediction-time availability contract and severe weather indicator extraction.
+  10. Leakage audit: passes clean features, rejects direct post-flight columns, rejects derived full-dataset aggregations.
+  11. End-to-end Phase 3 pipeline execution and artifact export verification.
 
 ---
 
-## 13. Project Status & Roadmap
+## 14. Project Status & Roadmap
 
 | Phase | Milestone | Status |
 | :--- | :--- | :--- |
 | **Phase 1** | Scaffolding, Ingestion, Validation, Anti-Leakage Preprocessing, CLI, Pytest | **COMPLETED** |
 | **Phase 2A** | Feature Engineering, Temporal Historical Features, Weather Foundation, Leakage Audit, EDA | **COMPLETED** |
 | **Phase 2B** | Chronological Split Training, Baseline, LR, RF, XGBoost, Thresholds, SHAP, Reports | **COMPLETED** |
-| **Phase 3** | PostgreSQL Data Layer, FastAPI Microservice, Streamlit Operations Dashboard | *Next Phase* |
-| **Phase 4** | Dockerization, CI/CD Pipeline, Model Registry, Production Packaging | *Upcoming* |
+| **Phase 3** | Advanced Feature Engineering, Route/Airport Congestion, Prior Fallbacks, Weather Layer | **COMPLETED** |
+| **Phase 3B** | Model Retraining & Phase 2B vs Phase 3 Evaluation | *Next Phase* |
+| **Phase 4** | PostgreSQL Data Layer, FastAPI Microservice, Streamlit Operations Dashboard | *Upcoming* |
+| **Phase 5** | Dockerization, CI/CD Pipeline, Model Registry, Production Packaging | *Upcoming* |

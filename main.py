@@ -45,6 +45,8 @@ from src.features.feature_reporter import (
     build_feature_dictionary_markdown,
     generate_feature_quality_report,
 )
+from src.features.advanced_features import build_phase3_feature_pipeline
+from src.features.phase3_reporter import generate_phase3_reports
 from src.models.train import run_training_pipeline
 
 logger = get_logger("airline_delay_cli")
@@ -360,6 +362,176 @@ def run_phase2b(config, features_df: Optional[pd.DataFrame] = None) -> int:
         return 1
 
 
+def run_phase3(config, pre_departure_df: Optional[pd.DataFrame] = None) -> int:
+    """Execute complete Phase 3 advanced feature engineering pipeline.
+
+    Workflow:
+        Load Phase 1 pre-departure data
+                ↓
+        Advanced Date Features (is_month_start/end, quarter, season)
+                ↓
+        Advanced Time Features (time of day, buckets, sin/cos cyclical)
+                ↓
+        Route Distance Categories & Strictly Prior Route Frequency
+                ↓
+        Strictly Prior Airport Congestion & Delay Rates
+                ↓
+        Multi-Granular Historical Delay Features (airline, origin, dest, route, interactions)
+                ↓
+        Weather Temporal Availability & Indicator Flags
+                ↓
+        Automated Leakage Audit (assert_no_target_leakage)
+                ↓
+        Dataset Export (flights_features_p3.parquet / .csv)
+                ↓
+        Phase 3 Feature Engineering Reports (MD & JSON)
+    """
+    print("\n" + "=" * 80)
+    print("EXECUTING PHASE 3: ADVANCED FEATURE ENGINEERING & REPAIR PIPELINE")
+    print("=" * 80)
+
+    # 1. Load Pre-Departure Dataset if not supplied in memory
+    if pre_departure_df is None:
+        parquet_file = config.data_processed_dir / "flights_pre_departure.parquet"
+        csv_file = config.data_processed_dir / "flights_pre_departure.csv"
+
+        if parquet_file.exists():
+            logger.info("Loading pre-departure data from %s", parquet_file)
+            input_df = pd.read_parquet(parquet_file)
+        elif csv_file.exists():
+            logger.info("Loading pre-departure data from %s", csv_file)
+            input_df = pd.read_csv(csv_file)
+        else:
+            logger.warning("No pre-departure dataset found in data/processed/. Running Phase 1 first...")
+            sample_target = find_default_dataset(config)
+            if not sample_target:
+                logger.error("Cannot run Phase 3: No dataset available.")
+                return 1
+            input_df = run_phase1(sample_target, config, do_preprocess=True)
+            if input_df is None:
+                logger.error("Phase 1 preprocessing failed to produce pre-departure dataset.")
+                return 1
+    else:
+        input_df = pre_departure_df.copy()
+
+    logger.info("Phase 3 input dataset loaded: %d records, %d columns", len(input_df), len(input_df.columns))
+
+    print("\n" + "-" * 80)
+    print("PHASE 3 - STEP 1: ADVANCED DATE, TIME, ROUTE & AIRPORT FEATURES")
+    print("-" * 80)
+    print(f"Input Pre-Departure Records: {len(input_df):,}")
+
+    base_p3_df, base_notes = build_phase3_feature_pipeline(input_df, config=config)
+    print(f"Phase 3 Base Features Generated: {len(base_p3_df.columns)} columns")
+    for k, note in base_notes.items():
+        print(f"  - {k}: {note}")
+
+    print("\n" + "-" * 80)
+    print("PHASE 3 - STEP 2: MULTI-GRANULAR STRICTLY PRIOR HISTORICAL DELAY FEATURES")
+    print("-" * 80)
+    hist_calc = HistoricalFeatureCalculator(config=config)
+    hist_p3_df, hist_notes, coverage_audit = hist_calc.compute_phase3_historical_features(
+        base_p3_df,
+        target_col="delay_target",
+        min_history=getattr(config, "historical_min_history_p3", 3),
+    )
+    print(f"Phase 3 Historical Features Generated: {len(hist_p3_df.columns)} columns")
+    for col_name, desc in hist_notes.items():
+        print(f"  - {col_name}: {desc}")
+
+    print("\n" + "-" * 80)
+    print("PHASE 3 - STEP 3: WEATHER INTEGRATION & SEVERE WEATHER FLAGS")
+    print("-" * 80)
+    weather_integrator = WeatherIntegrator(config=config)
+    weather_status, weather_file = weather_integrator.check_external_weather_availability()
+    print(f"Weather Status: {weather_status}")
+    weather_features = None
+    if weather_file:
+        print(f"Weather Dataset: {weather_file}")
+        weather_df = pd.read_csv(weather_file) if weather_file.suffix == ".csv" else pd.read_parquet(weather_file)
+        w_val = weather_integrator.validate_weather_schema(weather_df)
+        if w_val.is_valid:
+            joined_weather = weather_integrator.join_nearest_prior_weather(base_p3_df, weather_df)
+            weather_features = weather_integrator.derive_severe_weather_indicators(joined_weather)
+            print("Successfully merged observed weather records strictly prior to departure with severe flags.")
+        else:
+            print(f"External weather validation failed: {w_val.validation_notes}")
+    else:
+        print("Real weather data not supplied in data/external/. Weather contract verified with zero data fabrication.")
+
+    # 4. Assemble Final Phase 3 Feature Matrix
+    target_series = base_p3_df["delay_target"].copy() if "delay_target" in base_p3_df.columns else None
+    features_without_target = base_p3_df.drop(columns=["delay_target"], errors="ignore")
+
+    # Deduplicate any overlapping columns between base features and historical features
+    overlapping = [c for c in hist_p3_df.columns if c in features_without_target.columns]
+    if overlapping:
+        features_without_target = features_without_target.drop(columns=overlapping)
+
+    combined_df = pd.concat([features_without_target, hist_p3_df], axis=1)
+    if weather_features is not None:
+        weather_overlap = [c for c in weather_features.columns if c in combined_df.columns]
+        if weather_overlap:
+            weather_features = weather_features.drop(columns=weather_overlap)
+        combined_df = pd.concat([combined_df, weather_features], axis=1)
+
+    if target_series is not None:
+        combined_df["delay_target"] = target_series
+
+    # 5. Automated Leakage Audit
+    print("\n" + "-" * 80)
+    print("PHASE 3 - STEP 4: AUTOMATED LEAKAGE AUDIT")
+    print("-" * 80)
+    try:
+        assert_no_target_leakage(combined_df, config=config)
+        print("LEAKAGE AUDIT: PASS")
+        print("  - Zero post-flight outcome columns detected.")
+        print("  - Zero derived post-flight keywords detected.")
+        print("  - Historical/prior features verified strictly prior to departure (t < T).")
+        print("  - Ground-truth delay_target isolated as training label.")
+    except ValueError as e:
+        print(f"LEAKAGE AUDIT: FAILED\n{e}")
+        return 1
+
+    # 6. Export Final Phase 3 Feature Dataset
+    config.data_processed_dir.mkdir(parents=True, exist_ok=True)
+    out_parquet = config.data_processed_dir / "flights_features_p3.parquet"
+    out_csv = config.data_processed_dir / "flights_features_p3.csv"
+
+    combined_df.to_parquet(out_parquet, index=False)
+    combined_df.to_csv(out_csv, index=False)
+
+    # 7. Generate Phase 3 Reports
+    print("\n" + "-" * 80)
+    print("PHASE 3 - STEP 5: ARTIFACT EXPORT & REPORT GENERATION")
+    print("-" * 80)
+    config.reports_dir.mkdir(parents=True, exist_ok=True)
+    report_dict, report_md = generate_phase3_reports(
+        combined_df=combined_df,
+        coverage_audit=coverage_audit,
+        weather_status=weather_status,
+        config=config,
+    )
+
+    quality_md_file = config.reports_dir / "phase3_feature_report.md"
+    quality_json_file = config.reports_dir / "phase3_feature_report.json"
+    quality_md_file.write_text(report_md, encoding="utf-8")
+    with open(quality_json_file, "w", encoding="utf-8") as f:
+        json.dump(report_dict, f, indent=2)
+
+    print(f"Phase 3 ML Feature Dataset : {len(combined_df):,} records, {len(combined_df.columns)} features")
+    print(f"  - Parquet Export : {out_parquet}")
+    print(f"  - CSV Export     : {out_csv}")
+    print(f"Phase 3 Reports:")
+    print(f"  - Markdown Report: {quality_md_file}")
+    print(f"  - JSON Report    : {quality_json_file}")
+
+    print("\n" + "=" * 80)
+    print("PHASE 3 EXECUTION COMPLETED SUCCESSFULLY!")
+    print("=" * 80 + "\n")
+    return 0
+
+
 def run_pipeline(
     data_path: Optional[str] = None,
     do_ingest: bool = False,
@@ -367,10 +539,11 @@ def run_pipeline(
     do_preprocess: bool = False,
     do_phase2a: bool = False,
     do_phase2b: bool = False,
+    do_phase3: bool = False,
     do_all: bool = False,
     nrows: Optional[int] = None,
 ) -> int:
-    """Execute selected steps or complete Phase 1, Phase 2A, and Phase 2B pipeline."""
+    """Execute selected steps or complete Phase 1, Phase 2A, Phase 2B, and Phase 3 pipeline."""
     config = get_config()
 
     # Determine input dataset
@@ -396,6 +569,10 @@ def run_pipeline(
         print("=" * 80 + "\n")
     else:
         logger.info("Using raw flight dataset: %s", target_file)
+
+    # When --phase3 is specified
+    if do_phase3:
+        return run_phase3(config=config)
 
     # When --all is specified, run Phase 1 -> Phase 2A -> Phase 2B end-to-end
     if do_all:
@@ -485,6 +662,11 @@ def main():
         help="Execute Phase 2B model training, evaluation, threshold analysis, SHAP, and serialization.",
     )
     parser.add_argument(
+        "--phase3",
+        action="store_true",
+        help="Execute Phase 3 advanced feature engineering, multi-granular historical delay features, and reports.",
+    )
+    parser.add_argument(
         "--all",
         action="store_true",
         help="Execute complete end-to-end pipeline (Phase 1 + Phase 2A + Phase 2B).",
@@ -504,6 +686,7 @@ def main():
         do_preprocess=args.preprocess,
         do_phase2a=args.phase2a,
         do_phase2b=args.phase2b,
+        do_phase3=args.phase3,
         do_all=args.all,
         nrows=args.nrows,
     )

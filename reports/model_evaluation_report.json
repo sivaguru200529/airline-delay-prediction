@@ -1,7 +1,7 @@
 {
   "report_title": "Airline Delay Prediction \u2014 Phase 2B Model Evaluation & Explainability Report",
   "dataset_limitation_notice": "NOTICE: Results presented in this report were generated on the verified development sample (481 completed flights from January 1\u201310, 2024). These metrics represent development-sample behavior and smoke-test verification. Statistically representative operational performance requires training on the full multi-month or multi-year BTS dataset as documented in data/raw/README.md.",
-  "execution_timestamp": "2026-09-23T14:38:02.554406+00:00",
+  "execution_timestamp": "2026-09-24T17:27:40.340327+00:00",
   "dataset_summary": {
     "total_records": 481,
     "train_records": 336,

@@ -10,7 +10,7 @@
 ## 1. Dataset & Chronological Out-of-Time Splitting
 
 * **Total Cleaned Observations**: 481
-* **Splitting Strategy**: Strictly chronological ($	ext{Train} < 	ext{Validation} < 	ext{Test}$)
+* **Splitting Strategy**: Strictly chronological ($\text{Train} < \text{Validation} < \text{Test}$)
 * **Training Partition**: 336 flights (69.85%) [2024-01-01 to 2024-01-07] — Delay Rate: 31.85%
 * **Validation Partition**: 72 flights (14.97%) [2024-01-07 to 2024-01-09] — Delay Rate: 27.78%
 * **Test Partition**: 73 flights (15.18%) [2024-01-09 to 2024-01-10] — Delay Rate: 24.66%

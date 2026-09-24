@@ -1,0 +1,874 @@
+{
+  "report_title": "Airline Delay Prediction \u2014 Phase 3 Advanced Feature Engineering Report",
+  "feature_version": "phase3",
+  "total_records": 481,
+  "total_features": 68,
+  "execution_timestamp": "2026-09-24T17:33:59.730990+00:00",
+  "dataset_limitation_notice": "NOTICE: Results presented in this report were generated on the verified development sample (481 completed flights from January 1\u201310, 2024). These metrics verify feature generation, anti-leakage invariants, and temporal validity. Statistically representative operational performance requires the full multi-month/multi-year dataset.",
+  "feature_counts": {
+    "total_features": 68,
+    "retained_count": 9,
+    "enhanced_count": 7,
+    "new_count": 52
+  },
+  "feature_change_summary": {
+    "retained": [
+      "flight_date",
+      "airline",
+      "origin_airport",
+      "dest_airport",
+      "scheduled_dep_time",
+      "scheduled_arr_time",
+      "distance",
+      "route",
+      "delay_target"
+    ],
+    "enhanced": [
+      "dep_time_of_day",
+      "route_distance",
+      "route_distance_category",
+      "prior_airline_delay_rate",
+      "prior_origin_delay_rate",
+      "prior_dest_delay_rate",
+      "prior_route_delay_rate"
+    ],
+    "new": [
+      "cancelled",
+      "diverted",
+      "is_month_start",
+      "is_month_end",
+      "quarter",
+      "season",
+      "dep_time_bucket",
+      "dep_minute_sin",
+      "dep_minute_cos",
+      "arr_time_of_day",
+      "arr_time_bucket",
+      "arr_hour_sin",
+      "arr_hour_cos",
+      "distance_category",
+      "prior_route_frequency",
+      "prior_origin_flight_volume",
+      "prior_dest_flight_volume",
+      "prior_airline_flight_count",
+      "prior_airline_delay_count",
+      "carrier_prior_flight_count",
+      "airline_prior_flight_count",
+      "carrier_prior_delay_count",
+      "airline_prior_delay_count",
+      "carrier_prior_delay_rate",
+      "airline_prior_delay_rate",
+      "prior_origin_flight_count",
+      "prior_origin_delay_count",
+      "origin_prior_flight_count",
+      "origin_prior_delay_count",
+      "origin_prior_delay_rate",
+      "prior_dest_flight_count",
+      "prior_dest_delay_count",
+      "dest_prior_flight_count",
+      "dest_prior_delay_count",
+      "dest_prior_delay_rate",
+      "prior_route_flight_count",
+      "prior_route_delay_count",
+      "route_prior_flight_count",
+      "route_prior_delay_count",
+      "route_prior_delay_rate",
+      "prior_airline_dep_hour_flight_count",
+      "prior_airline_dep_hour_delay_count",
+      "prior_airline_dep_hour_delay_rate",
+      "carrier_origin_hour_prior_flight_count",
+      "airline_dep_hour_prior_flight_count",
+      "carrier_origin_hour_prior_delay_count",
+      "airline_dep_hour_prior_delay_count",
+      "carrier_origin_hour_prior_delay_rate",
+      "airline_dep_hour_prior_delay_rate",
+      "prior_origin_dep_hour_flight_count",
+      "prior_origin_dep_hour_delay_count",
+      "prior_origin_dep_hour_delay_rate"
+    ]
+  },
+  "distance_distribution": {
+    "min_distance": 205,
+    "max_distance": 2597,
+    "median_distance": 1382.0,
+    "missing_distance": 0,
+    "configured_categories": {
+      "short_haul": [
+        0.0,
+        500.0
+      ],
+      "medium_haul": [
+        500.0,
+        1500.0
+      ],
+      "long_haul": [
+        1500.0,
+        Infinity
+      ]
+    }
+  },
+  "historical_coverage_audit": {
+    "prior_airline": {
+      "total_records": 481,
+      "no_history_count": 7,
+      "no_history_pct": 1.46,
+      "insufficient_history_count": 14,
+      "insufficient_history_pct": 2.91,
+      "sufficient_history_count": 460,
+      "sufficient_history_pct": 95.63,
+      "min_history_threshold": 3,
+      "fallback_strategy": "global_prior"
+    },
+    "carrier": {
+      "total_records": 481,
+      "no_history_count": 7,
+      "no_history_pct": 1.46,
+      "insufficient_history_count": 14,
+      "insufficient_history_pct": 2.91,
+      "sufficient_history_count": 460,
+      "sufficient_history_pct": 95.63,
+      "min_history_threshold": 3,
+      "fallback_strategy": "global_prior"
+    },
+    "airline": {
+      "total_records": 481,
+      "no_history_count": 7,
+      "no_history_pct": 1.46,
+      "insufficient_history_count": 14,
+      "insufficient_history_pct": 2.91,
+      "sufficient_history_count": 460,
+      "sufficient_history_pct": 95.63,
+      "min_history_threshold": 3,
+      "fallback_strategy": "global_prior"
+    },
+    "prior_origin": {
+      "total_records": 481,
+      "no_history_count": 12,
+      "no_history_pct": 2.49,
+      "insufficient_history_count": 25,
+      "insufficient_history_pct": 5.2,
+      "sufficient_history_count": 444,
+      "sufficient_history_pct": 92.31,
+      "min_history_threshold": 3,
+      "fallback_strategy": "global_prior"
+    },
+    "origin": {
+      "total_records": 481,
+      "no_history_count": 12,
+      "no_history_pct": 2.49,
+      "insufficient_history_count": 25,
+      "insufficient_history_pct": 5.2,
+      "sufficient_history_count": 444,
+      "sufficient_history_pct": 92.31,
+      "min_history_threshold": 3,
+      "fallback_strategy": "global_prior"
+    },
+    "origin_airport": {
+      "total_records": 481,
+      "no_history_count": 12,
+      "no_history_pct": 2.49,
+      "insufficient_history_count": 25,
+      "insufficient_history_pct": 5.2,
+      "sufficient_history_count": 444,
+      "sufficient_history_pct": 92.31,
+      "min_history_threshold": 3,
+      "fallback_strategy": "global_prior"
+    },
+    "prior_dest": {
+      "total_records": 481,
+      "no_history_count": 13,
+      "no_history_pct": 2.7,
+      "insufficient_history_count": 23,
+      "insufficient_history_pct": 4.78,
+      "sufficient_history_count": 445,
+      "sufficient_history_pct": 92.52,
+      "min_history_threshold": 3,
+      "fallback_strategy": "global_prior"
+    },
+    "dest": {
+      "total_records": 481,
+      "no_history_count": 13,
+      "no_history_pct": 2.7,
+      "insufficient_history_count": 23,
+      "insufficient_history_pct": 4.78,
+      "sufficient_history_count": 445,
+      "sufficient_history_pct": 92.52,
+      "min_history_threshold": 3,
+      "fallback_strategy": "global_prior"
+    },
+    "dest_airport": {
+      "total_records": 481,
+      "no_history_count": 13,
+      "no_history_pct": 2.7,
+      "insufficient_history_count": 23,
+      "insufficient_history_pct": 4.78,
+      "sufficient_history_count": 445,
+      "sufficient_history_pct": 92.52,
+      "min_history_threshold": 3,
+      "fallback_strategy": "global_prior"
+    },
+    "prior_route": {
+      "total_records": 481,
+      "no_history_count": 129,
+      "no_history_pct": 26.82,
+      "insufficient_history_count": 209,
+      "insufficient_history_pct": 43.45,
+      "sufficient_history_count": 143,
+      "sufficient_history_pct": 29.73,
+      "min_history_threshold": 3,
+      "fallback_strategy": "global_prior"
+    },
+    "route": {
+      "total_records": 481,
+      "no_history_count": 129,
+      "no_history_pct": 26.82,
+      "insufficient_history_count": 209,
+      "insufficient_history_pct": 43.45,
+      "sufficient_history_count": 143,
+      "sufficient_history_pct": 29.73,
+      "min_history_threshold": 3,
+      "fallback_strategy": "global_prior"
+    },
+    "prior_airline_dep_hour": {
+      "total_records": 481,
+      "no_history_count": 115,
+      "no_history_pct": 23.91,
+      "insufficient_history_count": 195,
+      "insufficient_history_pct": 40.54,
+      "sufficient_history_count": 171,
+      "sufficient_history_pct": 35.55,
+      "min_history_threshold": 3,
+      "fallback_strategy": "global_prior"
+    },
+    "prior_origin_dep_hour": {
+      "total_records": 481,
+      "no_history_count": 178,
+      "no_history_pct": 37.01,
+      "insufficient_history_count": 214,
+      "insufficient_history_pct": 44.49,
+      "sufficient_history_count": 89,
+      "sufficient_history_pct": 18.5,
+      "min_history_threshold": 3,
+      "fallback_strategy": "global_prior"
+    }
+  },
+  "weather_integration": {
+    "status": "WEATHER STATUS: FOUNDATION READY \u2014 REAL DATA NOT PROVIDED",
+    "contract": "Prediction-Time Availability Contract: 1. Observed weather: surface station observations at/before scheduled departure (T_obs <= T_dep). 2. Historical weather: archived observations strictly prior to scheduled departure. 3. Forecast weather: forecasts issued at/before scheduled departure (T_issue <= T_dep). Zero data fabrication policy strictly maintained."
+  },
+  "leakage_audit_result": "PASS",
+  "features": [
+    {
+      "feature": "flight_date",
+      "status": "RETAINED",
+      "dtype": "str",
+      "unique_count": 10,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Flight scheduled calendar date."
+    },
+    {
+      "feature": "airline",
+      "status": "RETAINED",
+      "dtype": "str",
+      "unique_count": 7,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Operating airline 2-letter carrier code."
+    },
+    {
+      "feature": "origin_airport",
+      "status": "RETAINED",
+      "dtype": "str",
+      "unique_count": 12,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Scheduled departure airport 3-letter IATA code."
+    },
+    {
+      "feature": "dest_airport",
+      "status": "RETAINED",
+      "dtype": "str",
+      "unique_count": 12,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Scheduled arrival airport 3-letter IATA code."
+    },
+    {
+      "feature": "scheduled_dep_time",
+      "status": "RETAINED",
+      "dtype": "int64",
+      "unique_count": 107,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Scheduled departure military time (HHMM)."
+    },
+    {
+      "feature": "scheduled_arr_time",
+      "status": "RETAINED",
+      "dtype": "int64",
+      "unique_count": 424,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Scheduled arrival military time (HHMM)."
+    },
+    {
+      "feature": "distance",
+      "status": "RETAINED",
+      "dtype": "int64",
+      "unique_count": 429,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Non-stop flight distance in statute miles."
+    },
+    {
+      "feature": "cancelled",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int64",
+      "unique_count": 1,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Engineered operational predictor."
+    },
+    {
+      "feature": "diverted",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int64",
+      "unique_count": 1,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Engineered operational predictor."
+    },
+    {
+      "feature": "is_month_start",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int64",
+      "unique_count": 2,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Binary flag (1 if day == 1, else 0)."
+    },
+    {
+      "feature": "is_month_end",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int64",
+      "unique_count": 1,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Binary flag (1 if day is last day of the month, else 0)."
+    },
+    {
+      "feature": "quarter",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int64",
+      "unique_count": 1,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Calendar quarter (1-4)."
+    },
+    {
+      "feature": "season",
+      "status": "NEW (PHASE 3)",
+      "dtype": "str",
+      "unique_count": 1,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Meteorological season ('winter', 'spring', 'summer', 'fall')."
+    },
+    {
+      "feature": "dep_time_of_day",
+      "status": "ENHANCED (PHASE 3)",
+      "dtype": "str",
+      "unique_count": 4,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Standardized departure block ('night', 'morning', 'afternoon', 'evening')."
+    },
+    {
+      "feature": "dep_time_bucket",
+      "status": "NEW (PHASE 3)",
+      "dtype": "str",
+      "unique_count": 5,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "4-hour operational block ('00-04', '04-08', '08-12', '12-16', '16-20', '20-24')."
+    },
+    {
+      "feature": "dep_minute_sin",
+      "status": "NEW (PHASE 3)",
+      "dtype": "float64",
+      "unique_count": 7,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "sin(2*pi*dep_minute/60) circular minute projection."
+    },
+    {
+      "feature": "dep_minute_cos",
+      "status": "NEW (PHASE 3)",
+      "dtype": "float64",
+      "unique_count": 7,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "cos(2*pi*dep_minute/60) circular minute projection."
+    },
+    {
+      "feature": "arr_time_of_day",
+      "status": "NEW (PHASE 3)",
+      "dtype": "str",
+      "unique_count": 4,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Standardized arrival block ('night', 'morning', 'afternoon', 'evening')."
+    },
+    {
+      "feature": "arr_time_bucket",
+      "status": "NEW (PHASE 3)",
+      "dtype": "str",
+      "unique_count": 6,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "4-hour operational block for arrival schedule."
+    },
+    {
+      "feature": "arr_hour_sin",
+      "status": "NEW (PHASE 3)",
+      "dtype": "float64",
+      "unique_count": 12,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "sin(2*pi*arr_hour/24) unit-circle projection."
+    },
+    {
+      "feature": "arr_hour_cos",
+      "status": "NEW (PHASE 3)",
+      "dtype": "float64",
+      "unique_count": 13,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "cos(2*pi*arr_hour/24) unit-circle projection."
+    },
+    {
+      "feature": "route",
+      "status": "RETAINED",
+      "dtype": "str",
+      "unique_count": 129,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Directional airport-pair route identifier."
+    },
+    {
+      "feature": "route_distance",
+      "status": "ENHANCED (PHASE 3)",
+      "dtype": "int64",
+      "unique_count": 429,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Validated route flight distance in statute miles."
+    },
+    {
+      "feature": "route_distance_category",
+      "status": "ENHANCED (PHASE 3)",
+      "dtype": "str",
+      "unique_count": 3,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Phase 3 documented haul category (<500 mi short, 500-1500 mi med, >=1500 mi long)."
+    },
+    {
+      "feature": "distance_category",
+      "status": "NEW (PHASE 3)",
+      "dtype": "str",
+      "unique_count": 3,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Engineered operational predictor."
+    },
+    {
+      "feature": "prior_route_frequency",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int64",
+      "unique_count": 9,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Number of flights on this route occurring strictly before scheduled departure (t < T)."
+    },
+    {
+      "feature": "prior_origin_flight_volume",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int64",
+      "unique_count": 46,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Total flights departing from origin airport strictly before scheduled departure (t < T)."
+    },
+    {
+      "feature": "prior_dest_flight_volume",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int64",
+      "unique_count": 49,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Total flights arriving at destination airport strictly before scheduled departure (t < T)."
+    },
+    {
+      "feature": "prior_airline_flight_count",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int32",
+      "unique_count": 80,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Total prior flights for airline strictly before departure."
+    },
+    {
+      "feature": "prior_airline_delay_count",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int32",
+      "unique_count": 27,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Total prior delayed flights for airline strictly before departure."
+    },
+    {
+      "feature": "prior_airline_delay_rate",
+      "status": "ENHANCED (PHASE 3)",
+      "dtype": "float64",
+      "unique_count": 233,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Strictly prior airline delay rate with strictly prior global fallback."
+    },
+    {
+      "feature": "carrier_prior_flight_count",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int32",
+      "unique_count": 80,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Engineered operational predictor."
+    },
+    {
+      "feature": "airline_prior_flight_count",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int32",
+      "unique_count": 80,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Engineered operational predictor."
+    },
+    {
+      "feature": "carrier_prior_delay_count",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int32",
+      "unique_count": 27,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Engineered operational predictor."
+    },
+    {
+      "feature": "airline_prior_delay_count",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int32",
+      "unique_count": 27,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Engineered operational predictor."
+    },
+    {
+      "feature": "carrier_prior_delay_rate",
+      "status": "NEW (PHASE 3)",
+      "dtype": "float64",
+      "unique_count": 233,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Engineered operational predictor."
+    },
+    {
+      "feature": "airline_prior_delay_rate",
+      "status": "NEW (PHASE 3)",
+      "dtype": "float64",
+      "unique_count": 233,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Engineered operational predictor."
+    },
+    {
+      "feature": "prior_origin_flight_count",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int32",
+      "unique_count": 46,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Engineered operational predictor."
+    },
+    {
+      "feature": "prior_origin_delay_count",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int32",
+      "unique_count": 18,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Total prior delayed flights for origin airport strictly before departure."
+    },
+    {
+      "feature": "prior_origin_delay_rate",
+      "status": "ENHANCED (PHASE 3)",
+      "dtype": "float64",
+      "unique_count": 144,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Strictly prior origin delay rate with strictly prior global fallback."
+    },
+    {
+      "feature": "origin_prior_flight_count",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int32",
+      "unique_count": 46,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Engineered operational predictor."
+    },
+    {
+      "feature": "origin_prior_delay_count",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int32",
+      "unique_count": 18,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Engineered operational predictor."
+    },
+    {
+      "feature": "origin_prior_delay_rate",
+      "status": "NEW (PHASE 3)",
+      "dtype": "float64",
+      "unique_count": 144,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Engineered operational predictor."
+    },
+    {
+      "feature": "prior_dest_flight_count",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int32",
+      "unique_count": 49,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Engineered operational predictor."
+    },
+    {
+      "feature": "prior_dest_delay_count",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int32",
+      "unique_count": 19,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Total prior delayed flights for destination airport strictly before departure."
+    },
+    {
+      "feature": "prior_dest_delay_rate",
+      "status": "ENHANCED (PHASE 3)",
+      "dtype": "float64",
+      "unique_count": 147,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Strictly prior destination delay rate with strictly prior global fallback."
+    },
+    {
+      "feature": "dest_prior_flight_count",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int32",
+      "unique_count": 49,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Engineered operational predictor."
+    },
+    {
+      "feature": "dest_prior_delay_count",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int32",
+      "unique_count": 19,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Engineered operational predictor."
+    },
+    {
+      "feature": "dest_prior_delay_rate",
+      "status": "NEW (PHASE 3)",
+      "dtype": "float64",
+      "unique_count": 147,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Engineered operational predictor."
+    },
+    {
+      "feature": "prior_route_flight_count",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int32",
+      "unique_count": 9,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Engineered operational predictor."
+    },
+    {
+      "feature": "prior_route_delay_count",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int32",
+      "unique_count": 5,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Total prior delayed flights for route strictly before departure."
+    },
+    {
+      "feature": "prior_route_delay_rate",
+      "status": "ENHANCED (PHASE 3)",
+      "dtype": "float64",
+      "unique_count": 225,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Strictly prior route delay rate with strictly prior global fallback."
+    },
+    {
+      "feature": "route_prior_flight_count",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int32",
+      "unique_count": 9,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Engineered operational predictor."
+    },
+    {
+      "feature": "route_prior_delay_count",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int32",
+      "unique_count": 5,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Engineered operational predictor."
+    },
+    {
+      "feature": "route_prior_delay_rate",
+      "status": "NEW (PHASE 3)",
+      "dtype": "float64",
+      "unique_count": 225,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Engineered operational predictor."
+    },
+    {
+      "feature": "prior_airline_dep_hour_flight_count",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int32",
+      "unique_count": 9,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Prior flights for airline departing in same hour bucket strictly before T."
+    },
+    {
+      "feature": "prior_airline_dep_hour_delay_count",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int32",
+      "unique_count": 5,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Engineered operational predictor."
+    },
+    {
+      "feature": "prior_airline_dep_hour_delay_rate",
+      "status": "NEW (PHASE 3)",
+      "dtype": "float64",
+      "unique_count": 218,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Prior delay rate for airline departing in same hour bucket with global fallback."
+    },
+    {
+      "feature": "carrier_origin_hour_prior_flight_count",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int32",
+      "unique_count": 9,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Engineered operational predictor."
+    },
+    {
+      "feature": "airline_dep_hour_prior_flight_count",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int32",
+      "unique_count": 9,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Engineered operational predictor."
+    },
+    {
+      "feature": "carrier_origin_hour_prior_delay_count",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int32",
+      "unique_count": 5,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Engineered operational predictor."
+    },
+    {
+      "feature": "airline_dep_hour_prior_delay_count",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int32",
+      "unique_count": 5,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Engineered operational predictor."
+    },
+    {
+      "feature": "carrier_origin_hour_prior_delay_rate",
+      "status": "NEW (PHASE 3)",
+      "dtype": "float64",
+      "unique_count": 218,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Engineered operational predictor."
+    },
+    {
+      "feature": "airline_dep_hour_prior_delay_rate",
+      "status": "NEW (PHASE 3)",
+      "dtype": "float64",
+      "unique_count": 218,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Engineered operational predictor."
+    },
+    {
+      "feature": "prior_origin_dep_hour_flight_count",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int32",
+      "unique_count": 7,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Prior flights departing origin in same hour bucket strictly before T."
+    },
+    {
+      "feature": "prior_origin_dep_hour_delay_count",
+      "status": "NEW (PHASE 3)",
+      "dtype": "int32",
+      "unique_count": 4,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Engineered operational predictor."
+    },
+    {
+      "feature": "prior_origin_dep_hour_delay_rate",
+      "status": "NEW (PHASE 3)",
+      "dtype": "float64",
+      "unique_count": 258,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Prior delay rate departing origin in same hour bucket with global fallback."
+    },
+    {
+      "feature": "delay_target",
+      "status": "RETAINED",
+      "dtype": "int64",
+      "unique_count": 2,
+      "missing_count": 0,
+      "missing_pct": 0.0,
+      "description": "Binary delay label (1 if arrival_delay >= 15 min else 0)."
+    }
+  ]
+}

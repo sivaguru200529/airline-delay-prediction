@@ -7,7 +7,7 @@ risk categories, and strict definitions of post-flight leakage features.
 from dataclasses import dataclass, field
 import os
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from dotenv import load_dotenv
 
 # Resolve project root directory (two levels above src/utils)
@@ -96,6 +96,23 @@ class AppConfig:
     xgb_n_estimators: int = field(default_factory=lambda: int(os.getenv("XGB_N_ESTIMATORS", "100")))
     xgb_max_depth: int = field(default_factory=lambda: int(os.getenv("XGB_MAX_DEPTH", "4")))
     xgb_learning_rate: float = field(default_factory=lambda: float(os.getenv("XGB_LEARNING_RATE", "0.05")))
+
+    # Advanced Feature Engineering (Phase 3)
+    feature_version: str = "phase3"
+    historical_min_history_p3: int = field(
+        default_factory=lambda: int(os.getenv("HISTORICAL_MIN_HISTORY_P3", "3"))
+    )
+    distance_categories: Dict[str, Tuple[float, float]] = field(
+        default_factory=lambda: {
+            "short_haul": (0.0, 500.0),
+            "medium_haul": (500.0, 1500.0),
+            "long_haul": (1500.0, float("inf")),
+        }
+    )
+    time_bucket_hours: int = field(
+        default_factory=lambda: int(os.getenv("TIME_BUCKET_HOURS", "4"))
+    )
+    historical_fallback_strategy: str = "global_prior"
 
     # Essential conceptual fields required in any raw dataset
     required_conceptual_fields: List[str] = field(
