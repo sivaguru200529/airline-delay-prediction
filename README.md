@@ -460,7 +460,99 @@ python main.py --phase2b
 
 ---
 
-## 13. Running Automated Tests
+## 13. Phase 3B — Model Retraining & Phase 2A vs Phase 3 Evaluation
+
+Phase 3B executes a controlled, leakage-safe experimental comparison between **Phase 2A baseline features (38 features)** and **Phase 3 advanced features (68 features)** to determine whether advanced feature engineering improves delay prediction under identical chronological evaluation conditions.
+
+> **DEVELOPMENT DATASET LIMITATION NOTICE:**  
+> All experimental metrics reported below were evaluated on the verified development sample (**481 completed flights**, January 1–10, 2024).  
+> These smoke-test results isolate feature impact under identical conditions.  
+> **Statistically representative operational performance conclusions require scaling to the full multi-month/multi-year public BTS dataset.**
+
+### 1. Controlled Experimental Methodology
+* **Experiment A**: Phase 2A features (`data/processed/flights_features.parquet`, 38 columns) $\to$ preprocessing $\to$ model training $\to$ validation threshold tuning $\to$ test evaluation.
+* **Experiment B**: Phase 3 features (`data/processed/flights_features_p3.parquet`, 68 columns) $\to$ preprocessing $\to$ model training $\to$ validation threshold tuning $\to$ test evaluation.
+* **Controlled Invariants**:
+  - **Identical Population**: 481 completed commercial flights, Jan 1–10, 2024 (145 delays [30.15%], 336 on-time).
+  - **Identical Prediction Point**: Scheduled departure time ($T_{dep}$).
+  - **Identical Target**: $\text{delay\_target} = 1$ if $\text{arrival\_delay} \ge 15\text{ min}$, else $0$.
+  - **Identical Chronological Split**: 70% Train (336 flights), 15% Validation (72 flights), 15% Test (73 flights) with $\max(\text{Train}) \le \min(\text{Val}) \le \min(\text{Test})$.
+  - **Leakage Prevention**: Learned preprocessing transformers fitted strictly on training data; decision thresholds selected strictly on validation data; single unbiased evaluation on test partition.
+  - **Preservation Guarantee**: `models/delay_model.joblib` from Phase 2B is **never overwritten**; Phase 3B models are stored separately in `models/phase3b/`.
+
+### 2. Measured Out-of-Time Test Set Results
+
+Evaluated on the out-of-time test partition (73 flights, January 9–10, 2024) at validation-selected decision thresholds:
+
+| Model | Feature Set | Threshold | Accuracy | Precision | Recall | F1 | ROC-AUC | PR-AUC | Brier |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Majority Baseline** | Phase 2A | 0.50 | 0.7534 | 0.0000 | 0.0000 | 0.0000 | 0.5000 | 0.2466 | 0.2466 |
+| **Majority Baseline** | Phase 3 | 0.50 | 0.7534 | 0.0000 | 0.0000 | 0.0000 | 0.5000 | 0.2466 | 0.2466 |
+| **Logistic Regression** | Phase 2A | 0.50 | 0.2603 | 0.2500 | 1.0000 | 0.4000 | 0.5424 | 0.3036 | 0.5995 |
+| **Logistic Regression** | Phase 3 | 0.60 | 0.4795 | 0.2368 | 0.5000 | 0.3214 | 0.5051 | 0.2980 | 0.3875 |
+| **Random Forest** | Phase 2A | 0.30 | 0.2466 | 0.2466 | 1.0000 | 0.3956 | 0.4364 | 0.2179 | 0.2591 |
+| **Random Forest** | Phase 3 | 0.30 | 0.1918 | 0.2029 | 0.7778 | 0.3218 | 0.3848 | 0.2093 | 0.2508 |
+| **XGBoost** | Phase 2A | 0.30 | 0.3151 | 0.2143 | 0.6667 | 0.3243 | 0.3485 | 0.2046 | 0.3000 |
+| **XGBoost** | Phase 3 | 0.40 | 0.3836 | 0.2353 | 0.6667 | 0.3478 | 0.4253 | 0.2259 | 0.2908 |
+
+### 3. Metric Differences (Phase 3 - Phase 2A Deltas)
+
+Deltas reported as: **Absolute Difference (Percentage Change %)**:
+
+| Model | Accuracy Delta | Precision Delta | Recall Delta | F1 Delta | ROC-AUC Delta | PR-AUC Delta | Brier Score Delta |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Majority Baseline** | +0.0000 (+0.0%) | +0.0000 (+0.0%) | +0.0000 (+0.0%) | +0.0000 (+0.0%) | +0.0000 (+0.0%) | +0.0000 (+0.0%) | +0.0000 (+0.0%) |
+| **Logistic Regression** | +0.2192 (+84.2%) | -0.0132 (-5.3%) | -0.5000 (-50.0%) | -0.0786 (-19.7%) | -0.0373 (-6.9%) | -0.0056 (-1.8%) | **-0.2120 (-35.4%)** |
+| **Random Forest** | -0.0548 (-22.2%) | -0.0437 (-17.7%) | -0.2222 (-22.2%) | -0.0738 (-18.7%) | -0.0516 (-11.8%) | -0.0086 (-4.0%) | **-0.0083 (-3.2%)** |
+| **XGBoost** | **+0.0685 (+21.7%)** | **+0.0210 (+9.8%)** | **+0.0000 (+0.0%)** | **+0.0235 (+7.3%)** | **+0.0768 (+22.0%)** | **+0.0213 (+10.4%)** | **-0.0092 (-3.1%)** |
+
+*(Note: For Brier score, a negative delta indicates superior probability calibration).*
+
+### 4. Key Experimental Findings
+1. **XGBoost Improvements**:
+   - Phase 3 advanced feature engineering produced consistent gains across ranking, precision, and accuracy for XGBoost:
+     - **ROC-AUC**: Rose from 0.3485 to **0.4253 (+22.04%)**.
+     - **PR-AUC**: Rose from 0.2046 to **0.2259 (+10.41%)**.
+     - **Accuracy**: Rose from 0.3151 to **0.3836 (+21.74%)**.
+     - **F1-Score**: Rose from 0.3243 to **0.3478 (+7.25%)**.
+     - **Brier Score**: Improved from 0.3000 to **0.2908 (-3.07%)**.
+2. **Logistic Regression Calibration vs Recall Trade-off**:
+   - Probability calibration improved dramatically (**Brier score decreased by 35.36%** from 0.5995 to 0.3875), and accuracy improved from 0.2603 to 0.4795 (+84.21%).
+   - At the validation-selected threshold (0.60 vs 0.50), recall fell from 1.0000 to 0.5000, illustrating the classic precision/recall operational trade-off.
+3. **Random Forest Dimensionality Sensitivity**:
+   - On this small 336-row training set, expanding feature dimensions from 38 to 68 caused Random Forest to experience feature dilution, leading to lower recall (0.7778 vs 1.0000) and F1 (0.3218 vs 0.3956), although calibration slightly improved (-0.0083 Brier).
+4. **Majority Baseline Invariance**:
+   - Zero change across all metrics, confirming test partitioning and baseline reproducibility.
+
+### 5. Phase 3B Artifacts Generated
+* **CLI Execution**:
+  ```bash
+  python main.py --phase3b
+  ```
+* **Serialized Model Artifacts** (`models/phase3b/`):
+  - `phase2a_logistic_regression.joblib`
+  - `phase2a_random_forest.joblib`
+  - `phase2a_xgboost.joblib`
+  - `phase3_logistic_regression.joblib`
+  - `phase3_random_forest.joblib`
+  - `phase3_xgboost.joblib`
+  - `experiment_metadata.json`
+* **Comparative Evaluation Reports**:
+  - `reports/phase3b_model_comparison.md`
+  - `reports/phase3b_model_comparison.json`
+* **Comparative Diagnostic Figures** (`reports/figures/`):
+  - `phase3b_roc_comparison.png`
+  - `phase3b_precision_recall_comparison.png`
+  - `phase3b_calibration_comparison.png`
+  - `phase3b_confusion_matrix.png`
+  - `phase3b_feature_importance_comparison.png`
+  - `phase3b_shap_comparison.png`
+* **Interactive Notebook**:
+  - `notebooks/07_phase3b_model_comparison.ipynb` (14 structured sections)
+
+---
+
+## 14. Running Automated Tests
 
 Run the full unit test suite with pytest:
 
@@ -468,26 +560,25 @@ Run the full unit test suite with pytest:
 pytest -v tests/
 ```
 
-### Verified Test Cases (44 Total — 100% Pass):
+### Verified Test Cases (53 Total — 100% Pass):
 * **Phase 1 Tests (6 tests)**: Target generation, leakage column purging, BTS schema mapping, Kaggle schema mapping, required column validation, data quality checks.
 * **Phase 2A Tests (15 tests)**: Temporal validity acceptance/rejection, calendar feature extraction, military time parsing and midnight rollovers, cyclical unit-circle identities, route and haul categorization, historical delay strictly prior aggregation, minimum history fallback, weather schema validation, weather backward temporal join, automated leakage audit, chronological dataset split, final 38-feature schema validation.
 * **Phase 2B Tests (12 tests)**: Chronological split ordering ($\text{Train} < \text{Val} < \text{Test}$), target/leakage exclusion from feature matrix $X$, route feature suitability evaluation, preprocessing fitted strictly on training data, unknown categorical level handling (`handle_unknown='ignore'`), candidate model training and convergence (Baseline, Logistic Regression, Random Forest, XGBoost), validation model selection, inference schema and operational risk tier mapping, model serialization and reload reproducibility, metric calculation correctness, threshold sensitivity analysis, tree feature importance extraction with meaningful transformed names.
-* **Phase 3 Tests (11 tests)**:
-  1. Date features extraction (`is_month_start`, `is_month_end`, `quarter`, `season`).
-  2. Time features, time-of-day blocks (`night`, `morning`, `afternoon`, `evening`), and 4-hour buckets.
-  3. Cyclical encoding semantic continuity ($\sin^2 + \cos^2 = 1$, circular wrap-around).
-  4. Route distance distribution analysis and categorization (`short_haul`, `medium_haul`, `long_haul`).
-  5. Strictly prior route frequency test (Flight 1 has count 0, Flight 2 has count 1, etc.).
-  6. Airport historical features (prior origin/dest counts and rates, current row excluded, future rows excluded).
-  7. Historical delay features strictly prior temporal protection ($t < T$) and count preservation.
-  8. Minimum-history fallback using strictly prior global rate (no future contamination).
-  9. Weather prediction-time availability contract and severe weather indicator extraction.
-  10. Leakage audit: passes clean features, rejects direct post-flight columns, rejects derived full-dataset aggregations.
-  11. End-to-end Phase 3 pipeline execution and artifact export verification.
+* **Phase 3 Tests (11 tests)**: Date features, time features and 4-hour buckets, cyclical wrap-around identities, route distance categorization, strictly prior route frequency, airport congestion volume and rates, strictly prior historical delays ($t < T$), strictly prior global fallback, weather temporal availability contract, severe weather indicators, leakage audit passing and detection.
+* **Phase 3B Tests (9 tests)**:
+  1. Phase 2A and Phase 3 dataset loading and schema validation.
+  2. Matching 481-flight row population, dates, and delay targets.
+  3. Divergence detection on row count or target tampering.
+  4. Chronological split boundary parity with zero temporal overlap.
+  5. Preprocessing fitted strictly on training partition only.
+  6. Threshold selection conducted exclusively on validation data.
+  7. Accurate computation of absolute and percentage performance deltas without NaNs.
+  8. Phase 2B model preservation (`models/delay_model.joblib` untouched).
+  9. Full Phase 3B workflow execution and artifact generation.
 
 ---
 
-## 14. Project Status & Roadmap
+## 15. Project Status & Roadmap
 
 | Phase | Milestone | Status |
 | :--- | :--- | :--- |
@@ -495,6 +586,6 @@ pytest -v tests/
 | **Phase 2A** | Feature Engineering, Temporal Historical Features, Weather Foundation, Leakage Audit, EDA | **COMPLETED** |
 | **Phase 2B** | Chronological Split Training, Baseline, LR, RF, XGBoost, Thresholds, SHAP, Reports | **COMPLETED** |
 | **Phase 3** | Advanced Feature Engineering, Route/Airport Congestion, Prior Fallbacks, Weather Layer | **COMPLETED** |
-| **Phase 3B** | Model Retraining & Phase 2B vs Phase 3 Evaluation | *Next Phase* |
+| **Phase 3B** | Model Retraining & Phase 2A vs Phase 3 Evaluation | **COMPLETED** |
 | **Phase 4** | PostgreSQL Data Layer, FastAPI Microservice, Streamlit Operations Dashboard | *Upcoming* |
 | **Phase 5** | Dockerization, CI/CD Pipeline, Model Registry, Production Packaging | *Upcoming* |

@@ -1,0 +1,334 @@
+{
+  "experiment_name": "Phase 3B \u2014 Model Retraining & Phase 2A vs Phase 3 Evaluation",
+  "execution_timestamp": "2026-09-24T19:00:12.038110+00:00",
+  "random_seed": 42,
+  "dataset_metadata": {
+    "total_records": 481,
+    "phase2a_features_count": 38,
+    "phase3_features_count": 68,
+    "delay_target_positive": 145,
+    "delay_target_negative": 336,
+    "delay_rate": 0.3015,
+    "min_flight_date": "2024-01-01",
+    "max_flight_date": "2024-01-10",
+    "population_match": true
+  },
+  "split_summary": {
+    "total_records": 481,
+    "train_count": 336,
+    "val_count": 72,
+    "test_count": 73,
+    "train_pct": 69.85,
+    "val_pct": 14.97,
+    "test_pct": 15.18,
+    "train_date_range": [
+      "2024-01-01",
+      "2024-01-07"
+    ],
+    "val_date_range": [
+      "2024-01-07",
+      "2024-01-09"
+    ],
+    "test_date_range": [
+      "2024-01-09",
+      "2024-01-10"
+    ],
+    "train_delay_rate": 31.85,
+    "val_delay_rate": 27.78,
+    "test_delay_rate": 24.66,
+    "sample_size_limitation": "The current development dataset contains only approximately 481 flights spanning January 1\u201310, 2024. This split serves as an engineering verification / smoke test. Production modeling requires multi-month or multi-year public extracts."
+  },
+  "model_configurations": {
+    "logistic_regression": {
+      "C": 1.0,
+      "class_weight": "balanced",
+      "solver": "lbfgs"
+    },
+    "random_forest": {
+      "n_estimators": 100,
+      "max_depth": 6,
+      "class_weight": "balanced"
+    },
+    "xgboost": {
+      "n_estimators": 100,
+      "max_depth": 4,
+      "learning_rate": 0.05
+    }
+  },
+  "selected_thresholds": {
+    "phase2a": {
+      "Majority Baseline": 0.5,
+      "Logistic Regression": 0.5,
+      "Random Forest": 0.3,
+      "XGBoost": 0.3
+    },
+    "phase3": {
+      "Majority Baseline": 0.5,
+      "Logistic Regression": 0.6,
+      "Random Forest": 0.3,
+      "XGBoost": 0.4
+    }
+  },
+  "comparison_results": [
+    {
+      "model": "Majority Baseline",
+      "phase2a_threshold": 0.5,
+      "phase3_threshold": 0.5,
+      "metrics": {
+        "accuracy": {
+          "phase2a": 0.7534,
+          "phase3": 0.7534
+        },
+        "precision": {
+          "phase2a": 0.0,
+          "phase3": 0.0
+        },
+        "recall": {
+          "phase2a": 0.0,
+          "phase3": 0.0
+        },
+        "f1": {
+          "phase2a": 0.0,
+          "phase3": 0.0
+        },
+        "roc_auc": {
+          "phase2a": 0.5,
+          "phase3": 0.5
+        },
+        "pr_auc": {
+          "phase2a": 0.2466,
+          "phase3": 0.2466
+        },
+        "brier_score": {
+          "phase2a": 0.2466,
+          "phase3": 0.2466
+        }
+      },
+      "deltas_absolute": {
+        "accuracy": 0.0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "roc_auc": 0.0,
+        "pr_auc": 0.0,
+        "brier_score": 0.0
+      },
+      "deltas_percentage": {
+        "accuracy": 0.0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "roc_auc": 0.0,
+        "pr_auc": 0.0,
+        "brier_score": 0.0
+      },
+      "confusion_matrix_2a": {
+        "tn": 55,
+        "fp": 0,
+        "fn": 18,
+        "tp": 0
+      },
+      "confusion_matrix_p3": {
+        "tn": 55,
+        "fp": 0,
+        "fn": 18,
+        "tp": 0
+      }
+    },
+    {
+      "model": "Logistic Regression",
+      "phase2a_threshold": 0.5,
+      "phase3_threshold": 0.6,
+      "metrics": {
+        "accuracy": {
+          "phase2a": 0.2603,
+          "phase3": 0.4795
+        },
+        "precision": {
+          "phase2a": 0.25,
+          "phase3": 0.2368
+        },
+        "recall": {
+          "phase2a": 1.0,
+          "phase3": 0.5
+        },
+        "f1": {
+          "phase2a": 0.4,
+          "phase3": 0.3214
+        },
+        "roc_auc": {
+          "phase2a": 0.5424,
+          "phase3": 0.5051
+        },
+        "pr_auc": {
+          "phase2a": 0.3036,
+          "phase3": 0.298
+        },
+        "brier_score": {
+          "phase2a": 0.5995,
+          "phase3": 0.3875
+        }
+      },
+      "deltas_absolute": {
+        "accuracy": 0.2192,
+        "precision": -0.0132,
+        "recall": -0.5,
+        "f1": -0.0786,
+        "roc_auc": -0.0373,
+        "pr_auc": -0.0056,
+        "brier_score": -0.212
+      },
+      "deltas_percentage": {
+        "accuracy": 84.21,
+        "precision": -5.28,
+        "recall": -50.0,
+        "f1": -19.65,
+        "roc_auc": -6.88,
+        "pr_auc": -1.84,
+        "brier_score": -35.36
+      },
+      "confusion_matrix_2a": {
+        "tn": 1,
+        "fp": 54,
+        "fn": 0,
+        "tp": 18
+      },
+      "confusion_matrix_p3": {
+        "tn": 26,
+        "fp": 29,
+        "fn": 9,
+        "tp": 9
+      }
+    },
+    {
+      "model": "Random Forest",
+      "phase2a_threshold": 0.3,
+      "phase3_threshold": 0.3,
+      "metrics": {
+        "accuracy": {
+          "phase2a": 0.2466,
+          "phase3": 0.1918
+        },
+        "precision": {
+          "phase2a": 0.2466,
+          "phase3": 0.2029
+        },
+        "recall": {
+          "phase2a": 1.0,
+          "phase3": 0.7778
+        },
+        "f1": {
+          "phase2a": 0.3956,
+          "phase3": 0.3218
+        },
+        "roc_auc": {
+          "phase2a": 0.4364,
+          "phase3": 0.3848
+        },
+        "pr_auc": {
+          "phase2a": 0.2179,
+          "phase3": 0.2093
+        },
+        "brier_score": {
+          "phase2a": 0.2591,
+          "phase3": 0.2508
+        }
+      },
+      "deltas_absolute": {
+        "accuracy": -0.0548,
+        "precision": -0.0437,
+        "recall": -0.2222,
+        "f1": -0.0738,
+        "roc_auc": -0.0516,
+        "pr_auc": -0.0086,
+        "brier_score": -0.0083
+      },
+      "deltas_percentage": {
+        "accuracy": -22.22,
+        "precision": -17.72,
+        "recall": -22.22,
+        "f1": -18.66,
+        "roc_auc": -11.82,
+        "pr_auc": -3.95,
+        "brier_score": -3.2
+      },
+      "confusion_matrix_2a": {
+        "tn": 0,
+        "fp": 55,
+        "fn": 0,
+        "tp": 18
+      },
+      "confusion_matrix_p3": {
+        "tn": 0,
+        "fp": 55,
+        "fn": 4,
+        "tp": 14
+      }
+    },
+    {
+      "model": "XGBoost",
+      "phase2a_threshold": 0.3,
+      "phase3_threshold": 0.4,
+      "metrics": {
+        "accuracy": {
+          "phase2a": 0.3151,
+          "phase3": 0.3836
+        },
+        "precision": {
+          "phase2a": 0.2143,
+          "phase3": 0.2353
+        },
+        "recall": {
+          "phase2a": 0.6667,
+          "phase3": 0.6667
+        },
+        "f1": {
+          "phase2a": 0.3243,
+          "phase3": 0.3478
+        },
+        "roc_auc": {
+          "phase2a": 0.3485,
+          "phase3": 0.4253
+        },
+        "pr_auc": {
+          "phase2a": 0.2046,
+          "phase3": 0.2259
+        },
+        "brier_score": {
+          "phase2a": 0.3,
+          "phase3": 0.2908
+        }
+      },
+      "deltas_absolute": {
+        "accuracy": 0.0685,
+        "precision": 0.021,
+        "recall": 0.0,
+        "f1": 0.0235,
+        "roc_auc": 0.0768,
+        "pr_auc": 0.0213,
+        "brier_score": -0.0092
+      },
+      "deltas_percentage": {
+        "accuracy": 21.74,
+        "precision": 9.8,
+        "recall": 0.0,
+        "f1": 7.25,
+        "roc_auc": 22.04,
+        "pr_auc": 10.41,
+        "brier_score": -3.07
+      },
+      "confusion_matrix_2a": {
+        "tn": 11,
+        "fp": 44,
+        "fn": 6,
+        "tp": 12
+      },
+      "confusion_matrix_p3": {
+        "tn": 16,
+        "fp": 39,
+        "fn": 6,
+        "tp": 12
+      }
+    }
+  ]
+}

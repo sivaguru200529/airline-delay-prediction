@@ -22,6 +22,14 @@ from src.models.train import (
     run_training_pipeline,
     train_models,
 )
+from src.models.phase3b_compare import (
+    compute_experiment_deltas,
+    plot_phase3b_comparisons,
+    run_phase3b_workflow,
+    run_single_experiment,
+    save_phase3b_artifacts,
+    validate_experiment_datasets,
+)
 
 __all__ = [
     "split_dataset_chronologically",
@@ -44,4 +52,10 @@ __all__ = [
     "train_models",
     "extract_feature_importances",
     "run_training_pipeline",
+    "validate_experiment_datasets",
+    "run_single_experiment",
+    "compute_experiment_deltas",
+    "plot_phase3b_comparisons",
+    "save_phase3b_artifacts",
+    "run_phase3b_workflow",
 ]

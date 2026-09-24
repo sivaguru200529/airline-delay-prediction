@@ -7,6 +7,12 @@ Usage:
     # Run only Phase 2A (Feature engineering, historical features, quality reports)
     python main.py --phase2a
 
+    # Run only Phase 3 (Advanced feature engineering)
+    python main.py --phase3
+
+    # Run Phase 3B (Model retraining & Phase 2A vs Phase 3 evaluation)
+    python main.py --phase3b
+
     # Run on a specific dataset
     python main.py --data-path data/sample/bts_2024_dev_sample.csv --all
 
@@ -48,6 +54,7 @@ from src.features.feature_reporter import (
 from src.features.advanced_features import build_phase3_feature_pipeline
 from src.features.phase3_reporter import generate_phase3_reports
 from src.models.train import run_training_pipeline
+from src.models.phase3b_compare import run_phase3b_workflow
 
 logger = get_logger("airline_delay_cli")
 
@@ -532,6 +539,34 @@ def run_phase3(config, pre_departure_df: Optional[pd.DataFrame] = None) -> int:
     return 0
 
 
+def run_phase3b(config) -> int:
+    """Execute complete Phase 3B model retraining and Phase 2A vs Phase 3 evaluation pipeline.
+
+    Workflow:
+        Dataset Population & Integrity Verification (Phase 2A vs Phase 3)
+                ↓
+        Experiment A: Train candidate models on Phase 2A features (38 cols)
+                ↓
+        Experiment B: Train equivalent candidate models on Phase 3 features (68 cols)
+                ↓
+        Validation-driven threshold selection & unbiased chronological test evaluation
+                ↓
+        Comparative Performance Deltas (Phase 3 - Phase 2A)
+                ↓
+        Comparative Diagnostic Figures (ROC, PR, Calibration, Confusion Matrix, Feature Importance, SHAP)
+                ↓
+        Artifact Serialization to models/phase3b/ (preserving Phase 2B models)
+                ↓
+        Evaluation Reports (Markdown & JSON)
+    """
+    try:
+        return run_phase3b_workflow(config=config)
+    except Exception as e:
+        logger.error("Phase 3B execution failed: %s", e, exc_info=True)
+        print(f"\nERROR: Phase 3B failed with: {e}")
+        return 1
+
+
 def run_pipeline(
     data_path: Optional[str] = None,
     do_ingest: bool = False,
@@ -540,6 +575,7 @@ def run_pipeline(
     do_phase2a: bool = False,
     do_phase2b: bool = False,
     do_phase3: bool = False,
+    do_phase3b: bool = False,
     do_all: bool = False,
     nrows: Optional[int] = None,
 ) -> int:
@@ -569,6 +605,10 @@ def run_pipeline(
         print("=" * 80 + "\n")
     else:
         logger.info("Using raw flight dataset: %s", target_file)
+
+    # When --phase3b is specified
+    if do_phase3b:
+        return run_phase3b(config=config)
 
     # When --phase3 is specified
     if do_phase3:
@@ -667,6 +707,11 @@ def main():
         help="Execute Phase 3 advanced feature engineering, multi-granular historical delay features, and reports.",
     )
     parser.add_argument(
+        "--phase3b",
+        action="store_true",
+        help="Execute Phase 3B model retraining and comparative evaluation (Phase 2A vs Phase 3).",
+    )
+    parser.add_argument(
         "--all",
         action="store_true",
         help="Execute complete end-to-end pipeline (Phase 1 + Phase 2A + Phase 2B).",
@@ -687,6 +732,7 @@ def main():
         do_phase2a=args.phase2a,
         do_phase2b=args.phase2b,
         do_phase3=args.phase3,
+        do_phase3b=args.phase3b,
         do_all=args.all,
         nrows=args.nrows,
     )
