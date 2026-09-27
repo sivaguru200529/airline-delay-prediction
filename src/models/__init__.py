@@ -30,6 +30,17 @@ from src.models.phase3b_compare import (
     save_phase3b_artifacts,
     validate_experiment_datasets,
 )
+from src.models.phase4_eval import (
+    analyze_feature_importance,
+    analyze_phase3_feature_groups,
+    compare_phase2b_vs_phase3,
+    evaluate_phase4_models,
+    perform_temporal_split,
+    prepare_phase4_modeling_dataset,
+    run_phase4_workflow,
+    save_phase4_artifacts,
+    train_phase4_models,
+)
 
 __all__ = [
     "split_dataset_chronologically",
@@ -58,4 +69,14 @@ __all__ = [
     "plot_phase3b_comparisons",
     "save_phase3b_artifacts",
     "run_phase3b_workflow",
+    "prepare_phase4_modeling_dataset",
+    "perform_temporal_split",
+    "train_phase4_models",
+    "evaluate_phase4_models",
+    "compare_phase2b_vs_phase3",
+    "analyze_feature_importance",
+    "analyze_phase3_feature_groups",
+    "save_phase4_artifacts",
+    "run_phase4_workflow",
 ]
+

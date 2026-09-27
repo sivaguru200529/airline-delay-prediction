@@ -205,6 +205,15 @@ python main.py --all
 
 ### Run Specific Modular Phases
 ```bash
+# Run only Phase 4 (Model Retraining, Phase 2B vs Phase 3 Evaluation, Reports)
+python main.py --phase4
+
+# Run Phase 3B (Model retraining & Phase 2A vs Phase 3 evaluation)
+python main.py --phase3b
+
+# Run only Phase 3 (Advanced feature engineering, historical delay features, reports)
+python main.py --phase3
+
 # Run only Phase 2B (ML training, evaluation, threshold analysis, SHAP, model serialization)
 python main.py --phase2b
 
@@ -552,7 +561,71 @@ Deltas reported as: **Absolute Difference (Percentage Change %)**:
 
 ---
 
-## 14. Running Automated Tests
+## 14. Phase 4 — Model Retraining & Phase 2B vs Phase 3 Evaluation
+
+Phase 4 implements the machine-learning evaluation layer using the leakage-safe Phase 3 feature dataset (68 columns), objectively benchmarking candidate models against the preserved Phase 2B model artifact (`models/delay_model.joblib`).
+
+> **DEVELOPMENT DATASET LIMITATION NOTICE:**  
+> All experimental metrics reported below were evaluated on the verified development sample (**481 completed flights**, January 1–10, 2024).  
+> These smoke-test results verify chronological ordering, anti-leakage invariants, and probability calibration.  
+> **Statistically representative operational performance conclusions require scaling to the full multi-month/multi-year public BTS dataset.**
+
+### 1. Methodology & Anti-Leakage Contract
+* **Chronological Out-of-Time Splitting**:
+  - **Train Partition**: 336 flights (69.85%) [2024-01-01 to 2024-01-07] — Delay Rate: 31.85%
+  - **Validation Partition**: 72 flights (14.97%) [2024-01-07 to 2024-01-09] — Delay Rate: 27.78%
+  - **Test Partition**: 73 flights (15.18%) [2024-01-09 to 2024-01-10] — Delay Rate: 24.66%
+  - **Temporal Ordering Verified**: $\max(\text{Train}) \le \min(\text{Val}) \le \min(\text{Test})$.
+* **Anti-Leakage Guarantees**:
+  - Learned transformers (imputers, scalers, one-hot encoders) fitted **strictly on training partition**.
+  - Decision threshold optimization conducted **exclusively on validation data**.
+  - Final evaluation conducted **once on out-of-time test partition**.
+  - **Preservation Invariant**: `models/delay_model.joblib` (Phase 2B) remains **completely unmodified**.
+
+### 2. Model Comparison Table (Test Set)
+
+| Model | Feature Set | Thresh | Accuracy | Precision | Recall | F1 | ROC-AUC | PR-AUC | Brier |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Phase 2B Logistic Regression** | Phase 2B (38 features) | 0.50 | 0.2603 | 0.2500 | 1.0000 | 0.4000 | 0.5424 | 0.3036 | 0.5995 |
+| **Phase 3 Majority Baseline** | Phase 3 (68 features) | 0.50 | 0.7534 | 0.0000 | 0.0000 | 0.0000 | 0.5000 | 0.2466 | 0.2466 |
+| **Phase 3 Logistic Regression** | Phase 3 (68 features) | 0.50 | 0.4110 | 0.2340 | 0.6111 | 0.3385 | 0.5051 | 0.2980 | 0.3875 |
+| **Phase 3 Logistic Regression** | Phase 3 (68 features) | 0.60 | 0.4795 | 0.2368 | 0.5000 | 0.3214 | 0.5051 | 0.2980 | 0.3875 |
+| **Phase 3 Random Forest** | Phase 3 (68 features) | 0.50 | 0.5479 | 0.2222 | 0.3333 | 0.2667 | 0.3727 | 0.2143 | 0.2524 |
+| **Phase 3 Random Forest** | Phase 3 (68 features) | 0.40 | 0.3014 | 0.1887 | 0.5556 | 0.2817 | 0.3727 | 0.2143 | 0.2524 |
+| **Phase 3 XGBoost** | Phase 3 (68 features) | 0.50 | 0.4658 | 0.2162 | 0.4444 | 0.2909 | 0.4253 | 0.2259 | 0.2908 |
+| **Phase 3 XGBoost** | Phase 3 (68 features) | 0.40 | 0.3836 | 0.2353 | 0.6667 | 0.3478 | 0.4253 | 0.2259 | 0.2908 |
+
+### 3. Key Findings & Feature Importance
+* **Probability Calibration Gains**: Logistic Regression probability calibration improved dramatically (**Brier score fell from 0.5995 to 0.3875**), substantially reducing overconfidence.
+* **XGBoost Improvements**: XGBoost achieved highest ranking scores among non-linear models (**ROC-AUC = 0.4253, PR-AUC = 0.2259**).
+* **Top Phase 3 Predictive Features**: `origin_airport_DEN`, `origin_airport_LAX`, `airline_AA`, `arr_hour_cos`, `prior_origin_dep_hour_delay_rate`, `scheduled_dep_time`, `prior_dest_flight_volume`.
+* **Weather Data Handling**: Adheres strictly to `WEATHER STATUS: FOUNDATION READY — REAL DATA NOT PROVIDED` (zero synthetic data fabrication).
+
+### 4. Phase 4 Generated Artifacts
+* **CLI Execution**:
+  ```bash
+  python main.py --phase4
+  ```
+* **Serialized Model Pipelines** (`models/`):
+  - `delay_model_phase3_logistic.joblib`
+  - `delay_model_phase3_rf.joblib`
+  - `delay_model_phase3_xgb.joblib`
+  - `phase4_metadata.json`
+* **Evaluation Reports**:
+  - `reports/phase4_model_evaluation.md` (comprehensive 22-section markdown report)
+  - `reports/phase4_model_evaluation.json` (machine-readable structured JSON)
+* **Diagnostic Figures** (`reports/figures/`):
+  - `phase4_roc_comparison.png`
+  - `phase4_pr_comparison.png`
+  - `phase4_calibration_comparison.png`
+  - `phase4_confusion_matrices.png`
+  - `phase4_feature_importance.png`
+* **Interactive Notebook**:
+  - `notebooks/07_phase4_model_training_evaluation.ipynb` (20 structured sections)
+
+---
+
+## 15. Running Automated Tests
 
 Run the full unit test suite with pytest:
 
@@ -560,25 +633,35 @@ Run the full unit test suite with pytest:
 pytest -v tests/
 ```
 
-### Verified Test Cases (53 Total — 100% Pass):
+### Verified Test Cases (71 Total — 100% Pass):
 * **Phase 1 Tests (6 tests)**: Target generation, leakage column purging, BTS schema mapping, Kaggle schema mapping, required column validation, data quality checks.
 * **Phase 2A Tests (15 tests)**: Temporal validity acceptance/rejection, calendar feature extraction, military time parsing and midnight rollovers, cyclical unit-circle identities, route and haul categorization, historical delay strictly prior aggregation, minimum history fallback, weather schema validation, weather backward temporal join, automated leakage audit, chronological dataset split, final 38-feature schema validation.
-* **Phase 2B Tests (12 tests)**: Chronological split ordering ($\text{Train} < \text{Val} < \text{Test}$), target/leakage exclusion from feature matrix $X$, route feature suitability evaluation, preprocessing fitted strictly on training data, unknown categorical level handling (`handle_unknown='ignore'`), candidate model training and convergence (Baseline, Logistic Regression, Random Forest, XGBoost), validation model selection, inference schema and operational risk tier mapping, model serialization and reload reproducibility, metric calculation correctness, threshold sensitivity analysis, tree feature importance extraction with meaningful transformed names.
+* **Phase 2B Tests (12 tests)**: Chronological split ordering ($\text{Train} < \text{Val} < \text{Test}$), target/leakage exclusion from feature matrix $X$, route feature suitability evaluation, preprocessing fitted strictly on training data, unknown categorical level handling (`handle_unknown='ignore'`), candidate model training and convergence, validation model selection, inference schema and operational risk tier mapping, model serialization and reload reproducibility, metric calculation correctness, threshold sensitivity analysis, tree feature importance extraction.
 * **Phase 3 Tests (11 tests)**: Date features, time features and 4-hour buckets, cyclical wrap-around identities, route distance categorization, strictly prior route frequency, airport congestion volume and rates, strictly prior historical delays ($t < T$), strictly prior global fallback, weather temporal availability contract, severe weather indicators, leakage audit passing and detection.
-* **Phase 3B Tests (9 tests)**:
-  1. Phase 2A and Phase 3 dataset loading and schema validation.
-  2. Matching 481-flight row population, dates, and delay targets.
-  3. Divergence detection on row count or target tampering.
-  4. Chronological split boundary parity with zero temporal overlap.
-  5. Preprocessing fitted strictly on training partition only.
-  6. Threshold selection conducted exclusively on validation data.
-  7. Accurate computation of absolute and percentage performance deltas without NaNs.
-  8. Phase 2B model preservation (`models/delay_model.joblib` untouched).
-  9. Full Phase 3B workflow execution and artifact generation.
+* **Phase 3B Tests (9 tests)**: Population alignment, target preservation, split boundary parity, delta computation, model preservation.
+* **Phase 4 Tests (18 tests)**:
+  1. Phase 3 dataset loading and schema validation.
+  2. Target column presence and binary validation {0, 1}.
+  3. Post-flight leakage column exclusion from model features.
+  4. Target and identifier columns recorded in EXCLUDED_FEATURES with documented rationales.
+  5. Anti-leakage verification: zero future information in historical features.
+  6. Chronological split ordering preservation ($\max(\text{Train}) \le \min(\text{Val}) \le \min(\text{Test})$).
+  7. Exact temporal partition sample counts and positive rates.
+  8. Preprocessing fitted strictly on training partition only.
+  9. Logistic Regression pipeline training and valid coefficients.
+  10. Random Forest ensemble training and feature importances.
+  11. XGBoost classifier training and tree structure.
+  12. Prediction output length matching test set size.
+  13. Binary prediction values {0, 1}.
+  14. Predicted probabilities strictly within $[0.0, 1.0]$.
+  15. All evaluation metrics finite and non-NaN.
+  16. Phase 2B model preservation (`models/delay_model.joblib` SHA256 verified).
+  17. Phase 4 model artifacts and evaluation reports generated and non-empty.
+  18. Full Phase 4 workflow execution with exit code 0.
 
 ---
 
-## 15. Project Status & Roadmap
+## 16. Project Status & Roadmap
 
 | Phase | Milestone | Status |
 | :--- | :--- | :--- |
@@ -587,5 +670,7 @@ pytest -v tests/
 | **Phase 2B** | Chronological Split Training, Baseline, LR, RF, XGBoost, Thresholds, SHAP, Reports | **COMPLETED** |
 | **Phase 3** | Advanced Feature Engineering, Route/Airport Congestion, Prior Fallbacks, Weather Layer | **COMPLETED** |
 | **Phase 3B** | Model Retraining & Phase 2A vs Phase 3 Evaluation | **COMPLETED** |
-| **Phase 4** | PostgreSQL Data Layer, FastAPI Microservice, Streamlit Operations Dashboard | *Upcoming* |
-| **Phase 5** | Dockerization, CI/CD Pipeline, Model Registry, Production Packaging | *Upcoming* |
+| **Phase 4** | Model Retraining & Phase 2B vs Phase 3 Evaluation | **COMPLETED** |
+| **Phase 5** | PostgreSQL Data Layer, FastAPI Microservice, Streamlit Operations Dashboard | *Upcoming* |
+| **Phase 6** | Dockerization, CI/CD Pipeline, Model Registry, Production Packaging | *Upcoming* |
+

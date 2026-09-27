@@ -3,7 +3,7 @@
   "feature_version": "phase3",
   "total_records": 481,
   "total_features": 68,
-  "execution_timestamp": "2026-09-24T17:33:59.730990+00:00",
+  "execution_timestamp": "2026-09-27T07:04:18.271897+00:00",
   "dataset_limitation_notice": "NOTICE: Results presented in this report were generated on the verified development sample (481 completed flights from January 1\u201310, 2024). These metrics verify feature generation, anti-leakage invariants, and temporal validity. Statistically representative operational performance requires the full multi-month/multi-year dataset.",
   "feature_counts": {
     "total_features": 68,

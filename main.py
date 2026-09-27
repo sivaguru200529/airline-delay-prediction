@@ -55,6 +55,7 @@ from src.features.advanced_features import build_phase3_feature_pipeline
 from src.features.phase3_reporter import generate_phase3_reports
 from src.models.train import run_training_pipeline
 from src.models.phase3b_compare import run_phase3b_workflow
+from src.models.phase4_eval import run_phase4_workflow
 
 logger = get_logger("airline_delay_cli")
 
@@ -567,6 +568,30 @@ def run_phase3b(config) -> int:
         return 1
 
 
+def run_phase4(config) -> int:
+    """Execute complete Phase 4 model retraining and Phase 2B vs Phase 3 evaluation pipeline.
+
+    Workflow:
+        1. Load Phase 3 features (data/processed/flights_features_p3.parquet).
+        2. Validate required columns, target definition, and anti-leakage invariants.
+        3. Partition into MODEL_FEATURES, NUMERICAL_FEATURES, CATEGORICAL_FEATURES, EXCLUDED_FEATURES.
+        4. Strictly chronological temporal splitting (Train 70%, Val 15%, Test 15%).
+        5. Train candidate models (Baseline, Logistic Regression, Random Forest, XGBoost) strictly on Train.
+        6. Out-of-time evaluation, threshold sensitivity, probability calibration.
+        7. Fair comparison against existing Phase 2B model artifact (models/delay_model.joblib preserved).
+        8. Feature importance analysis (Top 20 features) and functional feature-group analysis.
+        9. Save model artifacts (models/delay_model_phase3_*.joblib).
+        10. Generate comprehensive Markdown and JSON evaluation reports.
+    """
+    try:
+        return run_phase4_workflow(config=config)
+    except Exception as e:
+        logger.error("Phase 4 execution failed: %s", e, exc_info=True)
+        print(f"\nERROR: Phase 4 failed with: {e}")
+        return 1
+
+
+
 def run_pipeline(
     data_path: Optional[str] = None,
     do_ingest: bool = False,
@@ -576,10 +601,11 @@ def run_pipeline(
     do_phase2b: bool = False,
     do_phase3: bool = False,
     do_phase3b: bool = False,
+    do_phase4: bool = False,
     do_all: bool = False,
     nrows: Optional[int] = None,
 ) -> int:
-    """Execute selected steps or complete Phase 1, Phase 2A, Phase 2B, and Phase 3 pipeline."""
+    """Execute selected steps or complete Phase 1, Phase 2A, Phase 2B, Phase 3, and Phase 4 pipeline."""
     config = get_config()
 
     # Determine input dataset
@@ -606,6 +632,10 @@ def run_pipeline(
     else:
         logger.info("Using raw flight dataset: %s", target_file)
 
+    # When --phase4 is specified
+    if do_phase4:
+        return run_phase4(config=config)
+
     # When --phase3b is specified
     if do_phase3b:
         return run_phase3b(config=config)
@@ -614,7 +644,7 @@ def run_pipeline(
     if do_phase3:
         return run_phase3(config=config)
 
-    # When --all is specified, run Phase 1 -> Phase 2A -> Phase 2B end-to-end
+    # When --all is specified, run Phase 1 -> Phase 2A -> Phase 2B -> Phase 3 -> Phase 4 end-to-end
     if do_all:
         pre_departure_df = run_phase1(
             target_file=target_file,
@@ -628,7 +658,15 @@ def run_pipeline(
         if res_2a != 0:
             logger.error("Phase 2A failed; aborting Phase 2B execution.")
             return res_2a
-        return run_phase2b(config=config)
+        res_2b = run_phase2b(config=config)
+        if res_2b != 0:
+            logger.error("Phase 2B failed; aborting pipeline.")
+            return res_2b
+        res_3 = run_phase3(config=config)
+        if res_3 != 0:
+            logger.error("Phase 3 failed; aborting pipeline.")
+            return res_3
+        return run_phase4(config=config)
 
     # When --phase2b is specified alone
     if do_phase2b:
@@ -712,9 +750,14 @@ def main():
         help="Execute Phase 3B model retraining and comparative evaluation (Phase 2A vs Phase 3).",
     )
     parser.add_argument(
+        "--phase4",
+        action="store_true",
+        help="Execute Phase 4 model retraining and Phase 2B vs Phase 3 evaluation layer.",
+    )
+    parser.add_argument(
         "--all",
         action="store_true",
-        help="Execute complete end-to-end pipeline (Phase 1 + Phase 2A + Phase 2B).",
+        help="Execute complete end-to-end pipeline (Phase 1 + Phase 2A + Phase 2B + Phase 3 + Phase 4).",
     )
     parser.add_argument(
         "--nrows",
@@ -733,6 +776,7 @@ def main():
         do_phase2b=args.phase2b,
         do_phase3=args.phase3,
         do_phase3b=args.phase3b,
+        do_phase4=args.phase4,
         do_all=args.all,
         nrows=args.nrows,
     )
