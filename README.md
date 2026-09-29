@@ -625,7 +625,44 @@ Phase 4 implements the machine-learning evaluation layer using the leakage-safe 
 
 ---
 
-## 15. Running Automated Tests
+## 15. Phase 5 — Exploratory Data Analysis (EDA)
+
+Phase 5 executes a comprehensive, empirical, and reproducible Exploratory Data Analysis (EDA) on the engineered Phase 3 feature dataset (`data/processed/flights_features_p3.parquet`, 68 columns, 481 flights), strictly preserving anti-leakage boundaries and keeping all Phase 1–4 artifacts intact.
+
+### 1. Key Empirical Findings
+* **Target Class Imbalance**: Observed arrival delay rate is **30.15%** (145 delayed flights vs 336 on-time flights) with an imbalance ratio of **2.32 : 1**. Naive majority accuracy (69.85%) is uninformative; Phase 6 must evaluate on **ROC-AUC**, **PR-AUC**, and **F1-Score**.
+* **Data Completeness & Cleanliness**: **0 missing cells (100% complete)**, **0 duplicate records**, and zero negative-value physical violations.
+* **Low-Variance Quarantine**: Exactly 5 features have zero variance in the 10-day development sample (`cancelled`, `diverted`, `is_month_end`, `quarter`, `season`) and must be pruned prior to Phase 6 estimator training.
+* **Temporal Patterns**: Midday departures (08:00–12:00) experience peak delays (**34.31%**), whereas late-evening departures (20:00–24:00) drop to **24.59%**. Weekend flights exhibit an elevated delay rate of **33.33%** vs **29.38%** on weekdays.
+* **Carrier Differences**: Observed delay rates range from **25.37%** (Delta, `DL`) to **37.68%** (American, `AA`).
+* **Spatial Hotspots**: Origin delay rates at Chicago O'Hare (`ORD`, **42.11%**) and Charlotte (`CLT`, **41.86%**) are more than double Miami (`MIA`, **19.57%**). Destination bottlenecks are led by New York JFK (`JFK`, **43.24%**) and Charlotte (`CLT`, **41.30%**).
+* **Route Sparsity**: 92.25% of route pairs have fewer than 5 observations, demonstrating that raw route one-hot encoding should be avoided in favor of distance and historical rates.
+* **Historical Delay Predictiveness**: Anti-leakage rolling delay rates show positive correlation with the target, led by `prior_origin_dep_hour_delay_rate` ($r = +0.0645$).
+* **Weather Layer Status**: Adheres strictly to `WEATHER STATUS: FOUNDATION READY — REAL DATA NOT PROVIDED` (zero synthetic data fabrication).
+
+### 2. Phase 5 Artifacts Generated
+* **CLI Execution**:
+  ```bash
+  python main.py --phase5
+  ```
+* **Implementation Plan**: `implementation_planP5.md`
+* **Comprehensive EDA Report**: `reports/phase5_eda_report.md` (16 structured sections)
+* **Interactive Notebook**: `notebooks/07_phase5_eda.ipynb` (17 structured sections, fully reproducible)
+* **EDA Python Engine**: `src/eda/eda_analyzer.py`
+* **Publication Figures** (`reports/figures/`):
+  - `phase5_target_distribution.png`
+  - `phase5_temporal_delay_patterns.png`
+  - `phase5_airline_delay_performance.png`
+  - `phase5_airport_hotspots.png`
+  - `phase5_route_delay_analysis.png`
+  - `phase5_historical_delay_features.png`
+  - `phase5_numerical_distributions.png`
+  - `phase5_correlation_heatmap.png`
+  - `phase5_outlier_boxplots.png`
+
+---
+
+## 16. Running Automated Tests
 
 Run the full unit test suite with pytest:
 
@@ -633,44 +670,40 @@ Run the full unit test suite with pytest:
 pytest -v tests/
 ```
 
-### Verified Test Cases (71 Total — 100% Pass):
+### Verified Test Cases (80 Total — 100% Pass):
 * **Phase 1 Tests (6 tests)**: Target generation, leakage column purging, BTS schema mapping, Kaggle schema mapping, required column validation, data quality checks.
 * **Phase 2A Tests (15 tests)**: Temporal validity acceptance/rejection, calendar feature extraction, military time parsing and midnight rollovers, cyclical unit-circle identities, route and haul categorization, historical delay strictly prior aggregation, minimum history fallback, weather schema validation, weather backward temporal join, automated leakage audit, chronological dataset split, final 38-feature schema validation.
 * **Phase 2B Tests (12 tests)**: Chronological split ordering ($\text{Train} < \text{Val} < \text{Test}$), target/leakage exclusion from feature matrix $X$, route feature suitability evaluation, preprocessing fitted strictly on training data, unknown categorical level handling (`handle_unknown='ignore'`), candidate model training and convergence, validation model selection, inference schema and operational risk tier mapping, model serialization and reload reproducibility, metric calculation correctness, threshold sensitivity analysis, tree feature importance extraction.
 * **Phase 3 Tests (11 tests)**: Date features, time features and 4-hour buckets, cyclical wrap-around identities, route distance categorization, strictly prior route frequency, airport congestion volume and rates, strictly prior historical delays ($t < T$), strictly prior global fallback, weather temporal availability contract, severe weather indicators, leakage audit passing and detection.
 * **Phase 3B Tests (9 tests)**: Population alignment, target preservation, split boundary parity, delta computation, model preservation.
-* **Phase 4 Tests (18 tests)**:
-  1. Phase 3 dataset loading and schema validation.
-  2. Target column presence and binary validation {0, 1}.
-  3. Post-flight leakage column exclusion from model features.
-  4. Target and identifier columns recorded in EXCLUDED_FEATURES with documented rationales.
-  5. Anti-leakage verification: zero future information in historical features.
-  6. Chronological split ordering preservation ($\max(\text{Train}) \le \min(\text{Val}) \le \min(\text{Test})$).
-  7. Exact temporal partition sample counts and positive rates.
-  8. Preprocessing fitted strictly on training partition only.
-  9. Logistic Regression pipeline training and valid coefficients.
-  10. Random Forest ensemble training and feature importances.
-  11. XGBoost classifier training and tree structure.
-  12. Prediction output length matching test set size.
-  13. Binary prediction values {0, 1}.
-  14. Predicted probabilities strictly within $[0.0, 1.0]$.
-  15. All evaluation metrics finite and non-NaN.
-  16. Phase 2B model preservation (`models/delay_model.joblib` SHA256 verified).
-  17. Phase 4 model artifacts and evaluation reports generated and non-empty.
-  18. Full Phase 4 workflow execution with exit code 0.
+* **Phase 4 Tests (18 tests)**: Schema validation, binary target, leakage exclusion, chronological ordering, model training (LR, RF, XGB), metrics calculation, artifact generation, Phase 2B model preservation.
+* **Phase 5 Tests (9 tests)**:
+  1. Phase 3 dataset loading and schema validation (481 rows, 68 columns).
+  2. Target variable binary verification {0, 1} and exact delay rate (30.15%).
+  3. Data quality verification (0 nulls, 0 duplicates, 5 constant columns).
+  4. Strict anti-leakage verification (zero post-flight outcome columns in predictive features).
+  5. All 9 Phase 5 publication-grade figures exist and are non-empty.
+  6. Phase 5 EDA markdown report exists and contains all 16 required sections.
+  7. Phase 5 Jupyter notebook exists and adheres to nbformat 4.
+  8. Full EDAAnalyzer engine workflow execution and metric output validation.
+  9. Full CLI execution via `main.py --phase5` exits with code 0.
 
 ---
 
-## 16. Project Status & Roadmap
+## 17. Project Status & Roadmap
 
 | Phase | Milestone | Status |
-| :--- | :--- | :--- |
-| **Phase 1** | Scaffolding, Ingestion, Validation, Anti-Leakage Preprocessing, CLI, Pytest | **COMPLETED** |
-| **Phase 2A** | Feature Engineering, Temporal Historical Features, Weather Foundation, Leakage Audit, EDA | **COMPLETED** |
-| **Phase 2B** | Chronological Split Training, Baseline, LR, RF, XGBoost, Thresholds, SHAP, Reports | **COMPLETED** |
-| **Phase 3** | Advanced Feature Engineering, Route/Airport Congestion, Prior Fallbacks, Weather Layer | **COMPLETED** |
-| **Phase 3B** | Model Retraining & Phase 2A vs Phase 3 Evaluation | **COMPLETED** |
-| **Phase 4** | Model Retraining & Phase 2B vs Phase 3 Evaluation | **COMPLETED** |
-| **Phase 5** | PostgreSQL Data Layer, FastAPI Microservice, Streamlit Operations Dashboard | *Upcoming* |
-| **Phase 6** | Dockerization, CI/CD Pipeline, Model Registry, Production Packaging | *Upcoming* |
+| :--- | :--- | :---: |
+| **Phase 1** | Project Setup & Data Ingestion Pipeline | **COMPLETED** ✅ |
+| **Phase 2** | Data Pipeline, Anti-Leakage Preprocessing & Foundation | **COMPLETED** ✅ |
+| **Phase 3** | Advanced Feature Engineering, Congestion & Multi-Granular Delays | **COMPLETED** ✅ |
+| **Phase 4** | Model Retraining & Phase 2B vs Phase 3 Evaluation | **COMPLETED** ✅ |
+| **Phase 5** | Exploratory Data Analysis (EDA) & Operational Hotspots | **COMPLETED** ✅ |
+| **Phase 6** | ML: Baseline, Logistic Regression, Random Forest, XGBoost, Evaluation | *Upcoming* ⏳ |
+| **Phase 7** | SHAP + Feature Importance + Individual Explanation | *Upcoming* ⏳ |
+| **Phase 8** | FastAPI REST Microservice | *Upcoming* ⏳ |
+| **Phase 9** | Streamlit Operations Dashboard | *Upcoming* ⏳ |
+| **Phase 10** | End-to-End Testing & Validation | *Upcoming* ⏳ |
+| **Phase 11** | Deployment & Production Packaging | *Upcoming* ⏳ |
+
 

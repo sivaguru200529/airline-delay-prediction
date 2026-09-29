@@ -591,6 +591,44 @@ def run_phase4(config) -> int:
         return 1
 
 
+def run_phase5(config) -> int:
+    """Execute complete Phase 5 Exploratory Data Analysis (EDA) pipeline.
+
+    Workflow:
+        1. Load Phase 3 features (data/processed/flights_features_p3.parquet) and operational records.
+        2. Execute comprehensive statistical EDA via EDAAnalyzer.
+        3. Generate 9 publication-grade figures in reports/figures/.
+        4. Validate report presence and non-leakage invariants.
+    """
+    try:
+        from src.eda.eda_analyzer import run_eda_analysis
+        from scripts.generate_phase5_figures import generate_all_figures
+
+        print("\n" + "=" * 80)
+        print("PHASE 5: EXPLORATORY DATA ANALYSIS (EDA)")
+        print("=" * 80)
+        eda_results = run_eda_analysis(config=config)
+        target_info = eda_results["target"]
+        print(f"Dataset Shape          : {eda_results['overview']['total_records']} rows x {eda_results['overview']['total_features']} features")
+        print(f"Target Distribution    : {target_info['on_time_count']} On-Time ({target_info['on_time_rate']:.2%}) | {target_info['delayed_count']} Delayed ({target_info['delay_rate']:.2%})")
+        print(f"Class Imbalance Ratio  : {target_info['imbalance_ratio']}:1")
+        print(f"Data Completeness      : {eda_results['data_quality']['data_quality_status']}")
+
+        generate_all_figures()
+
+        rep_path = config.reports_dir / "phase5_eda_report.md"
+        nb_path = config.project_root / "notebooks" / "07_phase5_eda.ipynb"
+        print(f"\nPhase 5 Report         : {rep_path} (Exists: {rep_path.exists()})")
+        print(f"Phase 5 Notebook       : {nb_path} (Exists: {nb_path.exists()})")
+        print("\nPhase 5 EDA completed successfully.")
+        return 0
+    except Exception as e:
+        logger.error("Phase 5 execution failed: %s", e, exc_info=True)
+        print(f"\nERROR: Phase 5 failed with: {e}")
+        return 1
+
+
+
 
 def run_pipeline(
     data_path: Optional[str] = None,
@@ -602,10 +640,11 @@ def run_pipeline(
     do_phase3: bool = False,
     do_phase3b: bool = False,
     do_phase4: bool = False,
+    do_phase5: bool = False,
     do_all: bool = False,
     nrows: Optional[int] = None,
 ) -> int:
-    """Execute selected steps or complete Phase 1, Phase 2A, Phase 2B, Phase 3, and Phase 4 pipeline."""
+    """Execute selected steps or complete Phase 1, Phase 2A, Phase 2B, Phase 3, Phase 4, and Phase 5 pipeline."""
     config = get_config()
 
     # Determine input dataset
@@ -632,6 +671,10 @@ def run_pipeline(
     else:
         logger.info("Using raw flight dataset: %s", target_file)
 
+    # When --phase5 is specified
+    if do_phase5:
+        return run_phase5(config=config)
+
     # When --phase4 is specified
     if do_phase4:
         return run_phase4(config=config)
@@ -644,7 +687,7 @@ def run_pipeline(
     if do_phase3:
         return run_phase3(config=config)
 
-    # When --all is specified, run Phase 1 -> Phase 2A -> Phase 2B -> Phase 3 -> Phase 4 end-to-end
+    # When --all is specified, run Phase 1 -> Phase 2A -> Phase 2B -> Phase 3 -> Phase 4 -> Phase 5 end-to-end
     if do_all:
         pre_departure_df = run_phase1(
             target_file=target_file,
@@ -666,7 +709,11 @@ def run_pipeline(
         if res_3 != 0:
             logger.error("Phase 3 failed; aborting pipeline.")
             return res_3
-        return run_phase4(config=config)
+        res_4 = run_phase4(config=config)
+        if res_4 != 0:
+            logger.error("Phase 4 failed; aborting pipeline.")
+            return res_4
+        return run_phase5(config=config)
 
     # When --phase2b is specified alone
     if do_phase2b:
@@ -755,9 +802,14 @@ def main():
         help="Execute Phase 4 model retraining and Phase 2B vs Phase 3 evaluation layer.",
     )
     parser.add_argument(
+        "--phase5",
+        action="store_true",
+        help="Execute Phase 5 Exploratory Data Analysis (EDA) and figure generation.",
+    )
+    parser.add_argument(
         "--all",
         action="store_true",
-        help="Execute complete end-to-end pipeline (Phase 1 + Phase 2A + Phase 2B + Phase 3 + Phase 4).",
+        help="Execute complete end-to-end pipeline (Phase 1 + Phase 2A + Phase 2B + Phase 3 + Phase 4 + Phase 5).",
     )
     parser.add_argument(
         "--nrows",
@@ -777,6 +829,7 @@ def main():
         do_phase3=args.phase3,
         do_phase3b=args.phase3b,
         do_phase4=args.phase4,
+        do_phase5=args.phase5,
         do_all=args.all,
         nrows=args.nrows,
     )
