@@ -56,6 +56,7 @@ from src.features.phase3_reporter import generate_phase3_reports
 from src.models.train import run_training_pipeline
 from src.models.phase3b_compare import run_phase3b_workflow
 from src.models.phase4_eval import run_phase4_workflow
+from src.models.phase6_training import run_phase6_workflow
 
 logger = get_logger("airline_delay_cli")
 
@@ -628,6 +629,28 @@ def run_phase5(config) -> int:
         return 1
 
 
+def run_phase6(config) -> int:
+    """Execute complete Phase 6 EDA-informed machine learning and model optimization pipeline.
+
+    Workflow:
+        1. Load Phase 3 features (data/processed/flights_features_p3.parquet).
+        2. Validate schema and enforce anti-leakage invariants.
+        3. Deterministic feature selection: prune 5 zero-variance columns and 25 redundant aliases.
+        4. Exclude high-cardinality route feature; preserve weather contract.
+        5. Chronological dataset splitting (Train 70%, Val 15%, Test 15%).
+        6. Train and tune candidate models (Majority Baseline, Logistic Regression, Random Forest, XGBoost).
+        7. Validation-driven threshold optimization between 0.30 and 0.70.
+        8. Comprehensive out-of-time evaluation on untouched test set.
+        9. Select best model and compare objectively against Phase 4 benchmark.
+        10. Model explainability (feature importance & SHAP summary plot).
+        11. Serialize best model into models/phase6/ and export evaluation reports & figures.
+    """
+    try:
+        return run_phase6_workflow(config=config)
+    except Exception as e:
+        logger.error("Phase 6 execution failed: %s", e, exc_info=True)
+        print(f"\nERROR: Phase 6 failed with: {e}")
+        return 1
 
 
 def run_pipeline(
@@ -641,6 +664,7 @@ def run_pipeline(
     do_phase3b: bool = False,
     do_phase4: bool = False,
     do_phase5: bool = False,
+    do_phase6: bool = False,
     do_all: bool = False,
     nrows: Optional[int] = None,
 ) -> int:
@@ -670,6 +694,10 @@ def run_pipeline(
         print("=" * 80 + "\n")
     else:
         logger.info("Using raw flight dataset: %s", target_file)
+
+    # When --phase6 is specified
+    if do_phase6:
+        return run_phase6(config=config)
 
     # When --phase5 is specified
     if do_phase5:
@@ -713,7 +741,11 @@ def run_pipeline(
         if res_4 != 0:
             logger.error("Phase 4 failed; aborting pipeline.")
             return res_4
-        return run_phase5(config=config)
+        res_5 = run_phase5(config=config)
+        if res_5 != 0:
+            logger.error("Phase 5 failed; aborting pipeline.")
+            return res_5
+        return run_phase6(config=config)
 
     # When --phase2b is specified alone
     if do_phase2b:
@@ -807,9 +839,14 @@ def main():
         help="Execute Phase 5 Exploratory Data Analysis (EDA) and figure generation.",
     )
     parser.add_argument(
+        "--phase6",
+        action="store_true",
+        help="Execute Phase 6 EDA-informed machine learning, hyperparameter optimization, and model selection.",
+    )
+    parser.add_argument(
         "--all",
         action="store_true",
-        help="Execute complete end-to-end pipeline (Phase 1 + Phase 2A + Phase 2B + Phase 3 + Phase 4 + Phase 5).",
+        help="Execute complete end-to-end pipeline (Phase 1 + Phase 2A + Phase 2B + Phase 3 + Phase 4 + Phase 5 + Phase 6).",
     )
     parser.add_argument(
         "--nrows",
@@ -830,6 +867,7 @@ def main():
         do_phase3b=args.phase3b,
         do_phase4=args.phase4,
         do_phase5=args.phase5,
+        do_phase6=args.phase6,
         do_all=args.all,
         nrows=args.nrows,
     )

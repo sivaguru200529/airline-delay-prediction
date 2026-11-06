@@ -205,6 +205,12 @@ python main.py --all
 
 ### Run Specific Modular Phases
 ```bash
+# Run only Phase 6 (EDA-informed ML, Hyperparameter Optimization, Threshold Analysis, Explainability)
+python main.py --phase6
+
+# Run only Phase 5 (Exploratory Data Analysis, Statistical Auditing, Operational Visualizations)
+python main.py --phase5
+
 # Run only Phase 4 (Model Retraining, Phase 2B vs Phase 3 Evaluation, Reports)
 python main.py --phase4
 
@@ -662,7 +668,99 @@ Phase 5 executes a comprehensive, empirical, and reproducible Exploratory Data A
 
 ---
 
-## 16. Running Automated Tests
+## 16. Phase 6 — EDA-Informed Machine Learning & Model Optimization
+
+Phase 6 leverages findings from the Phase 5 Exploratory Data Analysis to implement a leakage-safe, feature-pruned, hyperparameter-optimized machine learning pipeline with rigorous validation-based threshold optimization and SHAP explainability.
+
+> **DEVELOPMENT DATASET LIMITATION NOTICE:**  
+> The metrics presented below are **development-sample results** evaluated on **481 completed flights** (January 1–10, 2024).  
+> These metrics verify pipeline execution, anti-leakage invariants, out-of-time chronological validation, feature-pruning policies, and explainability architecture.  
+> **Statistically representative operational performance requires training on the full multi-month or multi-year BTS dataset.**
+
+### 1. EDA-Informed Feature Selection Policy
+Drawing directly from Phase 5 empirical audits, Phase 6 enforces a deterministic, two-layer feature selection policy on the 68-column Phase 3 dataset:
+1. **Zero-Variance Feature Pruning**: Strictly removed 5 uninformative zero-variance columns (`cancelled`, `diverted`, `is_month_end`, `quarter`, `season`).
+2. **Redundant Feature Alias Deduplication**: Pruned 25 perfectly/highly collinear aliases identified in Phase 5:
+   - Distance aliases: `route_distance` (retained canonical `distance`).
+   - Volume/Count aliases: `prior_origin_flight_volume` (retained `prior_origin_flight_count`), `prior_dest_flight_volume` (retained `prior_dest_flight_count`).
+   - Historical delay variants: pruned redundant carrier, origin, destination, and route multi-window counts and raw historical rate duplicates (`carrier_prior_*`, `origin_prior_*`, `dest_prior_*`, `route_prior_*`), preserving the canonical anti-leakage engineered features.
+3. **Route Sparsity Quarantine**: Because 92.25% of routes have fewer than 5 observations (Phase 5 finding), high-cardinality raw route one-hot encoding was quarantined in favor of distance, haul category, and historical delay aggregations.
+4. **Final Model Feature Matrix**: Reduced from 68 raw columns to **35 predictive features** (27 numerical, 8 categorical).
+
+### 2. Chronological Out-of-Time Partitioning & Preprocessing Isolation
+* **Temporal Ordering**: Sorted strictly by `scheduled_dep_time` without shuffling:
+  - **Train**: 336 flights (69.85%) [2024-01-01 to 2024-01-07] — Delay Rate: **31.85%**
+  - **Validation**: 72 flights (14.97%) [2024-01-07 to 2024-01-09] — Delay Rate: **27.78%**
+  - **Test**: 73 flights (15.18%) [2024-01-09 to 2024-01-10] — Delay Rate: **24.66%**
+* **Strict Preprocessing Isolation**: `SimpleImputer` (median), `StandardScaler` (linear models only), and `OneHotEncoder(handle_unknown='ignore')` are fitted **strictly on the training set**.
+* **Class Imbalance Strategy**: Rather than synthetic oversampling (SMOTE), class imbalance (delay rate ~31.85%) is handled via cost-sensitive learning:
+  - Logistic Regression & Random Forest: `class_weight='balanced'`
+  - XGBoost: `scale_pos_weight = 2.1402` (derived exclusively from train set negative-to-positive ratio).
+
+### 3. Hyperparameter Optimization & Candidate Comparison
+Lightweight, controlled grid searches were conducted using out-of-time chronological validation performance:
+- **Logistic Regression**: Regularization strength $C \in \{0.01, 0.1, 1.0, 10.0\}$ (Selected: $C = 10.0$).
+- **Random Forest**: Depth and leaf tuning ($n=100$, max_depth=8, min_samples_split=5).
+- **XGBoost**: Learning rate and depth regularization ($\eta=0.05$, max_depth=3, colsample=0.8).
+
+#### Validation Model Performance (Threshold = 0.50)
+| Model | Accuracy | Balanced Acc | Precision | Recall | F1-Score | ROC-AUC | PR-AUC | Brier Score |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Dummy Baseline** | 0.7222 | 0.5000 | 0.0000 | 0.0000 | 0.0000 | 0.5000 | 0.2778 | 0.2778 |
+| **Logistic Regression (Tuned)** | 0.4028 | 0.5365 | 0.2979 | 0.7000 | 0.4179 | 0.5519 | 0.3541 | 0.2718 |
+| **Random Forest (Tuned)** | 0.4444 | 0.5115 | 0.2821 | 0.5500 | 0.3729 | 0.4202 | 0.2520 | 0.2464 |
+| **XGBoost (Tuned)** | 0.5278 | 0.4423 | 0.2174 | 0.2500 | 0.2326 | 0.4683 | 0.2647 | 0.2642 |
+
+### 4. Validation-Based Threshold Optimization
+Operating thresholds were evaluated across $[0.30, 0.70]$ exclusively on the validation set targeting operational utility (balancing recall $\ge 0.60$ against precision decay):
+- Selected optimal threshold: **$\tau = 0.55$** for Logistic Regression.
+- At $\tau = 0.55$, Logistic Regression achieved Validation Precision = 0.3333, Validation Recall = 0.6500, Validation F1 = 0.4407.
+
+### 5. Final Out-of-Time Test Set Evaluation & Comparison with Phase 4
+Evaluated **once** on the untouched chronological test partition (73 flights, Jan 9–10, 2024):
+
+| Metric | Phase 4 LR Baseline | Phase 6 LR (Operating $\tau=0.55$) | Absolute Delta ($\Delta$) | Direction |
+| :--- | :---: | :---: | :---: | :---: |
+| **Test ROC-AUC** | 0.5051 | **0.5606** | **+0.0555** | Improved ✅ |
+| **Test PR-AUC** | 0.2980 | **0.3264** | **+0.0284** | Improved ✅ |
+| **Test Recall** | 0.5000 | **0.6667** | **+0.1667** | Improved ✅ |
+| **Test F1-Score** | 0.3214 | **0.3333** | **+0.0119** | Improved ✅ |
+| **Test Precision** | 0.2373 | 0.2222 | -0.0151 | Slight Tradeoff |
+| **Test Accuracy** | 0.3973 | 0.4247 | +0.0274 | Improved ✅ |
+| **Test Brier Score** | 0.4446 | 0.3155 | -0.1291 | Improved (Better Calibration) ✅ |
+
+#### Selected Final Model
+- **Selected Model**: **Logistic Regression** ($C=10.0$, operating threshold $\tau = 0.55$).
+- **Selection Rationale**: Achieved the highest test PR-AUC (0.3264), highest ROC-AUC (0.5606), best Brier calibration score (0.3155), and strong operational recall (66.67%), identifying two-thirds of delayed flights prior to scheduled pushback while pruning 30 redundant/zero-variance features.
+
+### 6. Explainability & Feature Importance
+- **Linear Explainer / Weights**: Top positive risk features identified include early scheduled departure hour (`scheduled_dep_time`), specific congested origin hubs (`origin_airport_CLT`, `origin_airport_ORD`), and historical route delay rates (`prior_route_delay_rate`).
+- **SHAP Summary**: Generated global SHAP summary plot (`reports/figures/phase6_shap_summary.png`) without claiming causality.
+
+### 7. Phase 6 Generated Artifacts
+- **CLI Execution**:
+  ```bash
+  python main.py --phase6
+  ```
+- **Serialized Model**: `models/phase6/best_model.joblib`
+- **Metadata & Metrics**:
+  - `models/phase6/model_metadata.json`
+  - `models/phase6/evaluation_metrics.json`
+  - `reports/phase6_model_evaluation.json`
+- **Evaluation Report**: `reports/phase6_model_evaluation.md`
+- **Interactive Notebook**: `notebooks/08_phase6_model_training.ipynb`
+- **Publication Figures**:
+  - `reports/figures/phase6_model_comparison.png`
+  - `reports/figures/phase6_roc_comparison.png`
+  - `reports/figures/phase6_pr_comparison.png`
+  - `reports/figures/phase6_confusion_matrix.png`
+  - `reports/figures/phase6_calibration_comparison.png`
+  - `reports/figures/phase6_feature_importance.png`
+  - `reports/figures/phase6_shap_summary.png`
+
+---
+
+## 17. Running Automated Tests
 
 Run the full unit test suite with pytest:
 
@@ -670,27 +768,34 @@ Run the full unit test suite with pytest:
 pytest -v tests/
 ```
 
-### Verified Test Cases (80 Total — 100% Pass):
+### Verified Test Cases (95 Total — 100% Pass):
 * **Phase 1 Tests (6 tests)**: Target generation, leakage column purging, BTS schema mapping, Kaggle schema mapping, required column validation, data quality checks.
 * **Phase 2A Tests (15 tests)**: Temporal validity acceptance/rejection, calendar feature extraction, military time parsing and midnight rollovers, cyclical unit-circle identities, route and haul categorization, historical delay strictly prior aggregation, minimum history fallback, weather schema validation, weather backward temporal join, automated leakage audit, chronological dataset split, final 38-feature schema validation.
 * **Phase 2B Tests (12 tests)**: Chronological split ordering ($\text{Train} < \text{Val} < \text{Test}$), target/leakage exclusion from feature matrix $X$, route feature suitability evaluation, preprocessing fitted strictly on training data, unknown categorical level handling (`handle_unknown='ignore'`), candidate model training and convergence, validation model selection, inference schema and operational risk tier mapping, model serialization and reload reproducibility, metric calculation correctness, threshold sensitivity analysis, tree feature importance extraction.
 * **Phase 3 Tests (11 tests)**: Date features, time features and 4-hour buckets, cyclical wrap-around identities, route distance categorization, strictly prior route frequency, airport congestion volume and rates, strictly prior historical delays ($t < T$), strictly prior global fallback, weather temporal availability contract, severe weather indicators, leakage audit passing and detection.
 * **Phase 3B Tests (9 tests)**: Population alignment, target preservation, split boundary parity, delta computation, model preservation.
 * **Phase 4 Tests (18 tests)**: Schema validation, binary target, leakage exclusion, chronological ordering, model training (LR, RF, XGB), metrics calculation, artifact generation, Phase 2B model preservation.
-* **Phase 5 Tests (9 tests)**:
-  1. Phase 3 dataset loading and schema validation (481 rows, 68 columns).
-  2. Target variable binary verification {0, 1} and exact delay rate (30.15%).
-  3. Data quality verification (0 nulls, 0 duplicates, 5 constant columns).
-  4. Strict anti-leakage verification (zero post-flight outcome columns in predictive features).
-  5. All 9 Phase 5 publication-grade figures exist and are non-empty.
-  6. Phase 5 EDA markdown report exists and contains all 16 required sections.
-  7. Phase 5 Jupyter notebook exists and adheres to nbformat 4.
-  8. Full EDAAnalyzer engine workflow execution and metric output validation.
-  9. Full CLI execution via `main.py --phase5` exits with code 0.
+* **Phase 5 Tests (9 tests)**: Schema validation (481 rows, 68 columns), target variable binary verification {0, 1} and rate (30.15%), data quality audit (0 nulls, 0 duplicates, 5 constant columns), anti-leakage verification, publication figures generation, EDA markdown report generation, Jupyter notebook validity, EDAAnalyzer workflow execution, CLI execution.
+* **Phase 6 Tests (15 tests)**:
+  1. Phase 3 parquet dataset loading (`data/processed/flights_features_p3.parquet`).
+  2. Required column schema validation and target presence (`delay_target`).
+  3. Constant zero-variance feature removal (`cancelled`, `diverted`, `is_month_end`, `quarter`, `season`).
+  4. Redundant feature alias handling (purging 25 collinear volume/distance/count aliases).
+  5. Strict anti-leakage audit (zero post-flight outcome columns in $X$).
+  6. Chronological split correctness (70% Train, 15% Val, 15% Test with strictly non-overlapping timestamps).
+  7. Preprocessing isolation (imputer, scaler, encoder fitted exclusively on Train).
+  8. Class weighting configuration (`class_weight='balanced'` and `scale_pos_weight`).
+  9. Candidate model training (Dummy, Logistic Regression, Random Forest, XGBoost).
+  10. Probability prediction within unit interval $[0, 1]$.
+  11. Validation-based threshold optimization ($[0.30, 0.70]$ strictly on Val).
+  12. Comprehensive metric calculation (ROC-AUC, PR-AUC, F1, Brier, Balanced Acc).
+  13. Model serialization, deserialization, and reload reproducibility.
+  14. Phase 6 artifacts and CLI execution verification.
+  15. Phase 6 Jupyter notebook validity (nbformat 4, executed cells).
 
 ---
 
-## 17. Project Status & Roadmap
+## 18. Project Status & Roadmap
 
 | Phase | Milestone | Status |
 | :--- | :--- | :---: |
@@ -699,7 +804,7 @@ pytest -v tests/
 | **Phase 3** | Advanced Feature Engineering, Congestion & Multi-Granular Delays | **COMPLETED** ✅ |
 | **Phase 4** | Model Retraining & Phase 2B vs Phase 3 Evaluation | **COMPLETED** ✅ |
 | **Phase 5** | Exploratory Data Analysis (EDA) & Operational Hotspots | **COMPLETED** ✅ |
-| **Phase 6** | ML: Baseline, Logistic Regression, Random Forest, XGBoost, Evaluation | *Upcoming* ⏳ |
+| **Phase 6** | ML: Baseline, Logistic Regression, Random Forest, XGBoost, Evaluation | **COMPLETED** ✅ |
 | **Phase 7** | SHAP + Feature Importance + Individual Explanation | *Upcoming* ⏳ |
 | **Phase 8** | FastAPI REST Microservice | *Upcoming* ⏳ |
 | **Phase 9** | Streamlit Operations Dashboard | *Upcoming* ⏳ |
